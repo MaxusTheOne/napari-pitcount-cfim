@@ -1,0 +1,11 @@
+name: napari-pitcount-cfim
+schema_version: 0.1.0
+contributions:
+    commands:
+    - id: napari-pitcount-cfim.Init
+      title: Analyze pit count - CFIM
+      python_name: napari_pitcount_cfim._dock_widget:MainWidget
+
+    widgets:
+    - command: napari-pitcount-cfim.Init
+      display_name: Analyze pit count - CFIM
