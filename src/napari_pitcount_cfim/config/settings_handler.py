@@ -10,7 +10,7 @@ from napari.settings import get_settings
 
 from napari_pitcount_cfim.config.settings_structure import CFIMSettings
 
-base_name = "napari-pitcount-cfim"
+base_name = "napari_pitcount_cfim"
 
 class SettingsHandler(QWidget):
     def __init__(self, path=None, parent=None, debug=False):
@@ -122,9 +122,13 @@ class SettingsHandler(QWidget):
         # Create the default settings with a dynamic output path
         self.settings = CFIMSettings().model_copy(update={"output_folder": output_folder})
 
+        if self.debug: print(f"Debug | Settings: {self.settings}")
+
         self._save_settings()
 
     def _save_settings(self):
+        folder = os.path.dirname(self.settings_file_path)
+        os.makedirs(folder, exist_ok=True)
         with open(self.settings_file_path, "w") as file:
             yaml.dump(self.settings.model_dump(), file, sort_keys=False)
 
