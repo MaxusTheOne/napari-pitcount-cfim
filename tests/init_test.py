@@ -1,5 +1,6 @@
 import pytest
 
+@pytest.fixture
 def test_initialization():
     # This is a placeholder test to ensure that the test suite runs correctly.
 

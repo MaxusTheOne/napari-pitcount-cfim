@@ -8,7 +8,9 @@ from qtpy.QtWidgets import QGroupBox, QWidget, QVBoxLayout, QPushButton
 
 from napari.settings import get_settings
 
+from napari_pitcount_cfim.config.settings_structure import CFIMSettings
 
+base_name = "napari-pitcount-cfim"
 
 class SettingsHandler(QWidget):
     def __init__(self, path=None, parent=None, debug=False):
@@ -21,7 +23,7 @@ class SettingsHandler(QWidget):
 
         if debug: print(f"Debug | Settings folder path: {self.settings_folder_path}")
 
-        self.settings_name = "napari_pitcount_cfim_settings.yaml"
+        self.settings_name = f"{base_name}_settings.yaml"
 
         self.settings_file_path = os.path.join(self.settings_folder_path, self.settings_name)
 
@@ -42,12 +44,12 @@ class SettingsHandler(QWidget):
         pane.setLayout(QVBoxLayout())
 
         open_settings_button = QPushButton("Open")
-        open_settings_button.clicked.connect(self.open_settings)
+        open_settings_button.clicked.connect(self.open_settings_file)
         pane.layout().addWidget(open_settings_button)
 
         return pane
 
-    def open_settings(self):
+    def open_settings_file(self):
         file_path = self.settings_file_path
         if sys.platform == "win32":
             os.startfile(file_path)
@@ -58,16 +60,21 @@ class SettingsHandler(QWidget):
 
     def update_settings(self):
         """
-            Gets the updated file and returns it
+            Updates and validates settings
+        """
+        self._load_settings()
+
+    def get_updated_settings(self):
+        """
+            Returns the updated settings as a dictionary.
         """
         self._load_settings()
         return self.settings.model_dump()
 
     def get_settings(self):
         """
-            Returns the settings dictionary.
+            Returns the settings as a dictionary.
         """
-
         return self.settings.model_dump()
 
     def _load_settings(self):
@@ -80,7 +87,7 @@ class SettingsHandler(QWidget):
                     updated_data, was_migrated = migrate_settings_if_needed(raw_data)
 
                     # Validate final result
-                    self.settings = PSFAnalysisPluginSettings(**updated_data)
+                    self.settings = CFIMSettings(**updated_data)
 
                     # Save only if new fields were added or version was bumped
                     if was_migrated:
@@ -106,14 +113,14 @@ class SettingsHandler(QWidget):
 
         # Build the default output folder path using platform conventions
         local_data_base_dir = os.getenv('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local'))
-        self.local_data_dir = os.path.join(local_data_base_dir, "psf-analysis-cfim")
+        self.local_data_dir = os.path.join(local_data_base_dir, base_name)
         output_folder = os.path.join(self.local_data_dir, "output")
 
         print(f"Local data directory: {self.local_data_dir}")
         print(f"Default output folder: {output_folder}")
 
         # Create the default settings with a dynamic output path
-        self.settings = PSFAnalysisPluginSettings().model_copy(update={"output_folder": output_folder})
+        self.settings = CFIMSettings().model_copy(update={"output_folder": output_folder})
 
         self._save_settings()
 
@@ -136,13 +143,13 @@ def deep_merge(defaults: dict, user_data: dict) -> dict:
 
 def migrate_settings_if_needed(data: dict) -> tuple[dict, bool]:
     version = data.get("version", "0.0")
-    newest_version = PSFAnalysisPluginSettings.__version__
+    newest_version = CFIMSettings.__version__
     if version == newest_version:
         return data, False
 
     print(f"[*] Detected settings version {version}, upgrading to {newest_version}")
 
-    defaults = PSFAnalysisPluginSettings().dict()
+    defaults = CFIMSettings().model_dump()
     merged = deep_merge(defaults, data)
     merged["version"] = newest_version
 
