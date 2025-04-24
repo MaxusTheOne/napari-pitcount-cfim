@@ -1,0 +1,45 @@
+name: Bump version on PR merge
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  bump:
+    if: >
+      github.event.pull_request.merged == true
+      && github.event.pull_request.base.ref == 'dummymain'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0     # needed for tagging
+
+      - name: Find version tag in PR title/body
+        id: find_version
+        run: |
+          TEXT="${{ github.event.pull_request.title }}\n${{ github.event.pull_request.body }}"
+          if [[ ! $TEXT =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "No version tag found; exiting."
+            exit 0
+          fi
+          VER="${BASH_REMATCH[1]}"
+          echo "Found version: $VER"
+          echo "version=$VER" >> $GITHUB_OUTPUT
+
+      - name: Update setup.cfg version
+        run: |
+          VERSION=${{ steps.find_version.outputs.version }}
+          sed -E -i "s/^version *= *[0-9]+\.[0-9]+\.[0-9]+/version = $VERSION/" setup.cfg
+
+      - name: Commit version bump & tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add setup.cfg
+          git commit -m "chore: bump version to v${{ steps.find_version.outputs.version }} [skip ci]"
+          git tag v${{ steps.find_version.outputs.version }}
+          git push origin HEAD:dummymain --tags
