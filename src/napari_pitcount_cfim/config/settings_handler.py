@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from typing import Tuple
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -145,7 +146,7 @@ def _deep_merge(defaults: dict, user_data: dict) -> dict:
             result[key] = value
     return result
 
-def _migrate_settings_if_needed(data: dict) -> tuple[dict, bool]:
+def _migrate_settings_if_needed(data: dict) -> Tuple[dict, bool]:
     version = data.get("version", "0.0")
     newest_version = CFIMSettings.__version__
     if version == newest_version:

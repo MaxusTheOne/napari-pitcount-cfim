@@ -3,7 +3,7 @@ from pathlib import Path
 from napari_pitcount_cfim.config.settings_handler import SettingsHandler
 
 @pytest.fixture(autouse=True)
-def no_side_effects(tmp_path, monkeypatch):
+def temp_path_cleanup(tmp_path, monkeypatch):
     # isolate filesystem, unset LOCALAPPDATA
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     yield
