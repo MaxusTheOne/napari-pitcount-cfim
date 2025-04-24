@@ -84,7 +84,7 @@ class SettingsHandler(QWidget):
                     raw_data = yaml.safe_load(file)
 
                     # Migrate non-destructively
-                    updated_data, was_migrated = migrate_settings_if_needed(raw_data)
+                    updated_data, was_migrated = _migrate_settings_if_needed(raw_data)
 
                     # Validate final result
                     self.settings = CFIMSettings(**updated_data)
@@ -133,19 +133,19 @@ class SettingsHandler(QWidget):
             yaml.dump(self.settings.model_dump(), file, sort_keys=False)
 
 
-def deep_merge(defaults: dict, user_data: dict) -> dict:
+def _deep_merge(defaults: dict, user_data: dict) -> dict:
     """
     Recursively merge user_data into defaults without overwriting existing keys.
     """
     result = defaults.copy()
     for key, value in user_data.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = deep_merge(result[key], value)
+            result[key] = _deep_merge(result[key], value)
         else:
             result[key] = value
     return result
 
-def migrate_settings_if_needed(data: dict) -> tuple[dict, bool]:
+def _migrate_settings_if_needed(data: dict) -> tuple[dict, bool]:
     version = data.get("version", "0.0")
     newest_version = CFIMSettings.__version__
     if version == newest_version:
@@ -154,7 +154,7 @@ def migrate_settings_if_needed(data: dict) -> tuple[dict, bool]:
     print(f"[*] Detected settings version {version}, upgrading to {newest_version}")
 
     defaults = CFIMSettings().model_dump()
-    merged = deep_merge(defaults, data)
+    merged = _deep_merge(defaults, data)
     merged["version"] = newest_version
 
     return merged, True

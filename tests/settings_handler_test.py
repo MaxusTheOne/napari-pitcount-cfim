@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from napari_pitcount_cfim.config.settings_handler import SettingsHandler, base_name, CFIMSettings, migrate_settings_if_needed
+from napari_pitcount_cfim.config.settings_handler import SettingsHandler
 
 @pytest.fixture(autouse=True)
 def no_side_effects(tmp_path, monkeypatch):
