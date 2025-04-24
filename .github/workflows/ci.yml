@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: [3.8, 3.9]
+        python: [3.9]
 
     steps:
     - uses: actions/checkout@v3
@@ -27,5 +27,7 @@ jobs:
         pip install ".[test]"
 
     - name: Run tests with coverage
+      env:
+        QT_QPA_PLATFORM: offscreen
       run: |
         pytest --maxfail=1 --disable-warnings --cov=napari_pitcount_cfim
