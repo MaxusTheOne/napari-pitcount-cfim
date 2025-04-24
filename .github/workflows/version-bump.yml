@@ -8,7 +8,7 @@ jobs:
   bump:
     if: >
       github.event.pull_request.merged == true
-      && github.event.pull_request.base.ref == 'dummymain'
+      && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
 
     steps:
@@ -42,4 +42,4 @@ jobs:
           git add setup.cfg
           git commit -m "chore: bump version to v${{ steps.find_version.outputs.version }} [skip ci]"
           git tag v${{ steps.find_version.outputs.version }}
-          git push origin HEAD:dummymain --tags
+          git push origin HEAD:main --tags
