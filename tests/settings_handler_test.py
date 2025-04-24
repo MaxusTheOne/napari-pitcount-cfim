@@ -1,6 +1,6 @@
-import pytest
 from pathlib import Path
 
+import pytest
 import yaml
 
 from napari_pitcount_cfim.config.settings_handler import SettingsHandler

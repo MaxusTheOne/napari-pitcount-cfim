@@ -27,5 +27,7 @@ jobs:
         pip install ".[test]"
 
     - name: Run tests with coverage
+      env:
+        QT_QPA_PLATFORM: offscreen
       run: |
         pytest --maxfail=1 --disable-warnings --cov=napari_pitcount_cfim
