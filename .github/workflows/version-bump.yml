@@ -30,10 +30,10 @@ jobs:
           echo "Found version: $VER"
           echo "version=$VER" >> $GITHUB_OUTPUT
 
-      - name: Bump setup.cfg → ${{ steps.find_version.outputs.version }}
+      - name: Update setup.cfg version
         run: |
-          python -m pip install bump2version
-          bump2version --allow-dirty --new-version ${{ steps.find_version.outputs.version }} setup.cfg
+          VERSION=${{ steps.find_version.outputs.version }}
+          sed -E -i "s/^version *= *[0-9]+\.[0-9]+\.[0-9]+/version = $VERSION/" setup.cfg
 
       - name: Commit version bump & tag
         run: |
