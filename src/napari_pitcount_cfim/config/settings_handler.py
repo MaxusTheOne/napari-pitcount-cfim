@@ -44,12 +44,12 @@ class SettingsHandler(QWidget):
         pane.setLayout(QVBoxLayout())
 
         open_settings_button = QPushButton("Open")
-        open_settings_button.clicked.connect(self.open_settings_file)
+        open_settings_button.clicked.connect(self._open_settings_file)
         pane.layout().addWidget(open_settings_button)
 
         return pane
 
-    def open_settings_file(self):
+    def _open_settings_file(self):
         file_path = self.settings_file_path
         if sys.platform == "win32":
             os.startfile(file_path)

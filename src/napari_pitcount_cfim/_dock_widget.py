@@ -1,4 +1,4 @@
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLineEdit
+from qtpy.QtWidgets import QWidget, QVBoxLayout
 
 from napari_pitcount_cfim.config.settings_handler import SettingsHandler
 
@@ -11,10 +11,6 @@ class MainWidget(QWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-
-        hello_text_field = QLineEdit("Hello, World!")
-
-        self.layout().addWidget(hello_text_field)
 
         open_settings_group = self.setting_handler.init_ui()
         self.layout().addWidget(open_settings_group)
