@@ -106,7 +106,6 @@ def compute_napari_gamma(color_name_list, gamma_default=1.0, correction_weight=0
 
 # endregion
 
-# TODO: Fix pint warning
 def extract_key_metadata(reader, channels):
     """
     Extracts specified metadata from reader.metadata and returns it as a list of dictionaries.
