@@ -1,9 +1,6 @@
 import os
 
 from aicsimageio.readers import CziReader
-from napari.utils.notifications import show_warning
-
-from napari_pitcount_cfim.czi_reader_plugin.czi_metadata_processor import extract_key_metadata
 from napari_pitcount_cfim.czi_reader_plugin.metadata_dump import metadata_dump
 
 
