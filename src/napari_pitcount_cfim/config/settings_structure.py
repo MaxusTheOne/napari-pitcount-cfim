@@ -17,10 +17,11 @@ class CFIMSettings(BaseModel):
     """
     Settings for the napari pitcount CFIM plugin.
     """
-    __version__: str = "0.1.0"
+    __version__: str = "0.2.0"
 
     version: str = Field(default=__version__)
     output_folder: str = Field(default_factory=get_default_output_folder)
+    input_folder: str = Field(default_factory=get_default_output_folder)
     debug_settings: DebugSettings = DebugSettings()
 
 

@@ -27,7 +27,7 @@ class SettingsHandler(QWidget):
 
         self.settings_file_path = os.path.join(self.settings_folder_path, self.settings_name)
 
-        self.settings: BaseModel
+        self._settings: BaseModel
         self._load_settings()
         if not self.settings:
             self._make_settings_file()
