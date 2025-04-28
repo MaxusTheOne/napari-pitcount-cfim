@@ -50,18 +50,16 @@ def read_czi(path):
             callable -> A callable that returns a list of tuples with the data, metadata and layer type.
                         Required format for napari readers.
     """
-    print(f"Dev | Loading czi file: {path}")
+
     reader = CziReader(path)
     file_name = os.path.basename(path)
     channels = reader.dims.C
-    print(f"Dev | Extracting metadata")
+
     try:
         # metadata_list = extract_key_metadata(reader, channels)
         metadata_list = metadata_dump(reader, channels)
     except ValueError as e:
         metadata_list = [{} for _ in range(channels)]
-
-    print(f"Dev | Got metadata. Type: {type(metadata_list)}")
 
     file_name_trunked = truncate_filename(file_name, 20)
 
@@ -71,7 +69,7 @@ def read_czi(path):
         data = reader.get_image_data("ZYX", T=0, C=channel)
 
         metadata = metadata_list[channel]
-        print(f"Dev | Metadata for channel {channel}: {metadata} | Type: {type(metadata)}")
+
 
         if channels > 0:
             try:
@@ -81,7 +79,7 @@ def read_czi(path):
 
         if not isinstance(metadata, dict):  # Holy shit, I'm making errors
             raise ValueError(f"Metadata for channel {channel} is not a dictionary. Got {type(metadata)}")
-        print(f"Dev | types; data:{type(data)}, metadata:{type(metadata)}")
+
         layer_data_list.append((data, metadata, "image"))
 
     def _reader_callable(_path=None):

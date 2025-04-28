@@ -6,7 +6,7 @@ import xmltodict
 
 from napari_pitcount_cfim.library_workarounds.RangeDict import RangeDict
 
-debug = True
+debug = False
 
 
 def metadata_dump(czi_read_file, channels) -> list[dict]:
