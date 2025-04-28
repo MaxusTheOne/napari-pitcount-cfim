@@ -6,6 +6,15 @@ contributions:
       title: Analyze pit count - CFIM
       python_name: napari_pitcount_cfim._dock_widget:MainWidget
 
+    - id: napari-pitcount-cfim.czi_reader_CFIM.read_czi
+      title: CZI Reader implementation - CFIM
+      python_name: napari_pitcount_cfim.czi_reader_plugin.czi_reader_CFIM:read_czi
+
     widgets:
     - command: napari-pitcount-cfim.Init
       display_name: Analyze pit count - CFIM
+
+    readers:
+      - command: napari-pitcount-cfim.czi_reader_CFIM.read_czi
+        filename_patterns: [ "*.czi" ]
+        accepts_directories: false
