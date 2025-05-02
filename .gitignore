@@ -1,7 +1,11 @@
+dev_*/
+
 # Pycharm and VSCode
 .idea/
 venv/
 .vscode/
+
+.venv_*/
 
 
 # Byte-compiled / optimized / DLL files

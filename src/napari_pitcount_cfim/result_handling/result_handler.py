@@ -1,6 +1,6 @@
 # Python
 from pathlib import Path
-from PyQt5.QtWidgets import QWidget, QFileDialog, QPushButton
+from qtpy.QtWidgets import QWidget, QFileDialog, QPushButton
 
 
 class ResultHandler(QWidget):

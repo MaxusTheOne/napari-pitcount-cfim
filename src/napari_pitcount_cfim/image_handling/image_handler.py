@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from PyQt5.QtWidgets import QWidget, QPushButton, QFileDialog
+import napari.layers
+from qtpy.QtWidgets import QWidget, QPushButton, QFileDialog
 
 
 class ImageHandler(QWidget):
@@ -14,6 +15,14 @@ class ImageHandler(QWidget):
         self.output_path = output_path
         self.prompt_for_folder = prompt_for_folder
         self.load_button = None
+
+    def get_all_images(self):
+        """
+            Get all images from the napari viewer.
+        """
+        if not self.viewer.layers:
+            raise ValueError("No layers in the viewer.")
+        return [layer.data for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
 
     def init_load_button_ui(self):
         """
@@ -36,6 +45,19 @@ class ImageHandler(QWidget):
         Turn on/off the folder‐selection dialog.
         """
         self.prompt_for_folder = bool(enabled)
+
+    def get_scale(self, index):
+        """
+        Get the scale of the image at the given index.
+        """
+        if not self.viewer.layers:
+            raise ValueError("No layers in the viewer.")
+        if index >= len(self.viewer.layers):
+            raise IndexError("Index out of range.")
+        layer = self.viewer.layers[index]
+        if not isinstance(layer, napari.layers.Image):
+            raise TypeError("Layer is not an image.")
+        return layer.scale
 
     def _select_folder(self) -> bool:
         """

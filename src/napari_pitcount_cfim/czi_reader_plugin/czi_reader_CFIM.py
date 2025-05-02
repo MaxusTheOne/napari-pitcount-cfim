@@ -1,6 +1,8 @@
 import os
 
 from aicsimageio.readers import CziReader
+
+from napari_pitcount_cfim.czi_reader_plugin.czi_metadata_processor import extract_key_metadata
 from napari_pitcount_cfim.czi_reader_plugin.metadata_dump import metadata_dump
 
 
@@ -53,8 +55,8 @@ def read_czi(path):
     channels = reader.dims.C
 
     try:
-        # metadata_list = extract_key_metadata(reader, channels)
-        metadata_list = metadata_dump(reader, channels)
+        metadata_list = extract_key_metadata(reader, channels)
+        # metadata_list = metadata_dump(reader, channels)
     except ValueError as e:
         metadata_list = [{} for _ in range(channels)]
 
@@ -70,7 +72,7 @@ def read_czi(path):
 
         if channels > 0:
             try:
-                metadata["name"] = f"{int(float(metadata["metadata"]["EmissionWavelength"]))}λ | {file_name_trunked}"
+                metadata["name"] = f'{int(float(metadata["metadata"]["EmissionWavelength"]))}λ - {file_name_trunked}'
             except KeyError:
                 metadata["name"] = f"Channel {channel} | {file_name_trunked}"
 

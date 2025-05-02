@@ -119,7 +119,7 @@ def extract_key_metadata(reader, channels):
         dict_list -> A list of dictionaries with the metadata for each channel.
     """
     # Defining the keys to extract from the metadata; TODO: Add to settings, to allow user to select which keys for UI.
-    keys = ["LensNA", "CameraName", "NominalMagnification", "PinholeSizeAiry", "ExcitationWavelength", "EmissionWavelength", "ObjectiveName", "DefaultScalingUnit"]
+    keys = ["EmissionWavelength", "DefaultScalingUnit"]
 
     # Get the xml metadata from the reader
     xml_metadata = reader.metadata
