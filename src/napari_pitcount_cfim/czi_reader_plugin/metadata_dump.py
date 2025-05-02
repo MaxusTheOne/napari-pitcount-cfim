@@ -46,7 +46,7 @@ def metadata_dump(czi_read_file, channels) -> list[dict]:
     channel_metadata_list = []
 
     for channel in range(channels):
-        wavelength = round(float(image_dict["Dimensions"]["Channels"]["Channel"][channel].get("EmissionWavelength", 0)), 0)
+        wavelength = round(float(image_dict["Dimensions"]["Channels"]["Channel"][channel].get("EmissionWavelength", 0.0)))
         channel_metadata = {"metadata": {**metadata, "wavelength": wavelength}
                             , "scale": yx_spacing, "units": metadata["units"],
                             "colormap": wavelength_to_color[wavelength]}

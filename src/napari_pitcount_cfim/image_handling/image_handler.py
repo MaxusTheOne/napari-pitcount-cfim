@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import napari.layers
 from PyQt5.QtWidgets import QWidget, QPushButton, QFileDialog
 
 
@@ -14,6 +15,14 @@ class ImageHandler(QWidget):
         self.output_path = output_path
         self.prompt_for_folder = prompt_for_folder
         self.load_button = None
+
+    def get_all_images(self):
+        """
+            Get all images from the napari viewer.
+        """
+        if not self.viewer.layers:
+            raise ValueError("No layers in the viewer.")
+        return [layer.data for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
 
     def init_load_button_ui(self):
         """
