@@ -18,9 +18,9 @@ class MainWidget(QWidget):
     def __init__(self, napari_viewer, parent=None):
         super().__init__(parent=parent)
 
-        setup_python_logging()
-        qInstallMessageHandler(qt_message_logger)
-        setup_thread_exception_hook()
+        # setup_python_logging()
+        # qInstallMessageHandler(qt_message_logger)
+        # setup_thread_exception_hook()
 
 
         self.viewer = napari_viewer
@@ -77,7 +77,6 @@ class MainWidget(QWidget):
         path = pathlib.Path(__file__).parent / "logo" / "CFIM_logo_small.png"
         logo_label = QLabel()
         logo_label.setText(f"<img src='{path}' width='320'/>")
-        print(f"Dev | Logo path: {path}")
         self.layout().addWidget(logo_label)
 
     def _run_analysis(self):
@@ -93,10 +92,6 @@ class MainWidget(QWidget):
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("%p%")  # Display percentage text (defaults to "%p%")
-
-        # Ensure a CellposeUser instance is available for segmentation
-        if not hasattr(self, "cellpose_user"):
-            self.cellpose_user = CellposeUser()  # import or define CellposeUser accordingly
 
         # Initialize counter for completed images
         self._completed = 0
@@ -122,8 +117,9 @@ class MainWidget(QWidget):
             # If layers are Napari layer objects, get the numpy data and name
             image_data = getattr(layer, "data", layer)  # layer.data if layer is an Image layer
             image_name = getattr(layer, "name", "Image")  # layer.name if available
+            cellpose_user = CellposeUser()
 
-            worker = SegmentationWorker(image_data, image_name, self.cellpose_user)
+            worker = SegmentationWorker(image_data, image_name, cellpose_user)
             worker.result.connect(_on_segmentation_result)
             worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
 

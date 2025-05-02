@@ -64,7 +64,6 @@ class ImageHandler(QWidget):
         Pop up a folder‐selection dialog and store the result in self.output_path.
         Returns False if the user cancels.
         """
-        print(f"Dev | Output path: {self.output_path}")
         folder = QFileDialog.getExistingDirectory(
             self,
             "Select image folder",
