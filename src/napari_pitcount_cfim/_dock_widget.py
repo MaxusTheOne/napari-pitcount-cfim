@@ -2,6 +2,7 @@ import pathlib
 from tkinter.messagebox import showinfo
 from typing import List
 
+import numpy as np
 from qtpy.QtCore import qInstallMessageHandler
 from qtpy.QtWidgets import QPushButton, QProgressBar
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLayout, QLabel, QGroupBox
@@ -47,12 +48,15 @@ class MainWidget(QWidget):
         pane = QGroupBox(self)
         pane.setTitle("Analysis")
         pane.setLayout(QVBoxLayout())
-        analysis_button = QPushButton("Cellpose all images")
-        analysis_button.clicked.connect(self._run_analysis)
+        self.analysis_button = QPushButton("Cellpose all images")
+        self.analysis_button.clicked.connect(self._run_analysis)
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setMinimum(0)
-        pane.layout().addWidget(analysis_button)
+
+
+        pane.layout().addWidget(self.analysis_button)
         pane.layout().addWidget(self.progress_bar)
+
         self.layout().addWidget(pane)
 
 
@@ -83,19 +87,25 @@ class MainWidget(QWidget):
         """Run Cellpose segmentation on all images using background threads."""
         layers = self.image_handler.get_all_images()
         total = len(layers)
+
         if total == 0:
             showinfo("No images loaded")
             return  # No images loaded, nothing to do
 
-        # Create and configure a progress bar for tracking overall progress
-
+        self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("%p%")  # Display percentage text (defaults to "%p%")
+        self.progress_bar.setFormat("%p%")
+
+        # Turn off the analysis button
+        self.analysis_button.setEnabled(False)
+
+
 
         # Initialize counter for completed images
         self._completed = 0
         scale = self.image_handler.get_scale(0)
+        cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
         if scale.shape == (3,):
             scale = scale[1:]
 
@@ -110,21 +120,22 @@ class MainWidget(QWidget):
             # If all images are processed, ensure progress bar reaches 100%
             if self._completed == total:
                 self.progress_bar.setValue(total)
-                # (Optional) You could hide or disable the progress bar here if desired
+                self.analysis_button.setEnabled(True)
 
         # Launch a worker thread for each image to run Cellpose in parallel
-        for layer in layers:
+        for data in layers:
             # If layers are Napari layer objects, get the numpy data and name
-            image_data = getattr(layer, "data", layer)  # layer.data if layer is an Image layer
-            image_name = getattr(layer, "name", "Image")  # layer.name if available
-            cellpose_user = CellposeUser()
+            image_name = getattr(data, "name", "Image")  # layer.name if available
+            cellpose_user = CellposeUser(cellpose_settings=cellpose_settings)
 
-            worker = SegmentationWorker(image_data, image_name, cellpose_user)
+            worker = SegmentationWorker(data, image_name, cellpose_user)
             worker.result.connect(_on_segmentation_result)
             worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
 
             self._workers.append(worker)
             worker.start()
+
+
 
     def _cleanup_worker(self, worker):
         if worker in self._workers:

@@ -7,6 +7,8 @@ Modify `TIFF_PATH` below to point to your .tiff file.
 import napari
 import numpy as np
 from cellpose import models
+from cellpose.utils import remove_edge_masks
+from cellpose.dynamics import remove_bad_flow_masks
 import tifffile
 import importlib.resources as pkg_resources
 
@@ -21,25 +23,21 @@ class CellposeUser:
         if cellpose_settings:
             self.cellpose_settings = cellpose_settings
         else:
-            self.cellpose_settings = {}
+            self.cellpose_settings = {
+                "border_filter": True,
+                "model_type": "cyto3",
+                "gpu": False,
+            }
 
-        self.progress_bar = None
+        try:
+            self.model = models.Cellpose(
+                gpu=self.cellpose_settings["gpu"],
+                model_type=self.cellpose_settings["model_type"],
+                nchan=2
+            )
+        except KeyError as e:
+            raise ValueError(f"Invalid cellpose settings: {e}")
 
-
-        self.model = models.Cellpose(
-            gpu=False,
-            model_type='cyto3',
-            nchan=2
-        )
-
-    def attach_progress_bar(self, progress_bar):
-        """
-        Attach a progress bar to the CellposeUser instance.
-
-        Parameters:
-            progress_bar: A Qwidget progress bar.
-        """
-        self.progress_bar = progress_bar
 
     def run_on_tiff(self, tiff_path: str, output_dir: str = 'cell_crops'):
         """
@@ -56,10 +54,10 @@ class CellposeUser:
             img: np.ndarray
             output_dir: directory to save individual cell crops
         """
-
+        print(f"Img shape: {img.shape}")
         masks_list, flows, styles, diams = self.model.eval(
             [img],
-            channels=[1, 0],
+            channels=[0, 0],
             resample=True,
             normalize=True,
             invert=False,
@@ -67,11 +65,19 @@ class CellposeUser:
             flow_threshold=0.4,
             cellprob_threshold=0.0,
             augment=False,
-            compute_masks=True,
-            progress=self.progress_bar,
-        )
+            min_size=30,
 
-        return masks_list, flows, styles, diams
+
+        )
+        masks = np.array(masks_list[0])
+
+        if self.cellpose_settings["border_filter"]:
+            masks = remove_edge_masks(masks)
+
+        # masks = remove_bad_flow_masks(masks, flows[0][1])
+
+        return masks, flows[0], styles, diams
+
 
 
 

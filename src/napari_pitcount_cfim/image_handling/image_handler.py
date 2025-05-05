@@ -24,6 +24,14 @@ class ImageHandler(QWidget):
             raise ValueError("No layers in the viewer.")
         return [layer.data for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
 
+    def get_all_labels(self):
+        """
+            Get all labels from the napari viewer.
+        """
+        if not self.viewer.layers:
+            raise ValueError("No layers in the viewer.")
+        return [layer.data for layer in self.viewer.layers if isinstance(layer, napari.layers.Labels)]
+
     def init_load_button_ui(self):
         """
             Initialize the load button UI.
