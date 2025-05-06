@@ -1,12 +1,14 @@
-name: Build & Publish to PyPI
+name: Build & Publish from Bump
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_run:
+    workflows: ["Bump version on PR merge"]
+    types:
+      - completedd
 
 jobs:
   publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -16,18 +18,16 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
       - name: Install build tools
         run: |
           python -m pip install --upgrade build twine
 
       - name: Build distributions
-        run: |
-          python -m build   # produces dist/*.whl and dist/*.tar.gz
+        run: python -m build
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release
         with:
-          # store a PyPI API token in your repo secrets under PYPI_API_TOKEN
           password: ${{ secrets.PYPI_TOKEN }}
