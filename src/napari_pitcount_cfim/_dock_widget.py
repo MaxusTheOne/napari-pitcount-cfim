@@ -2,6 +2,7 @@ import pathlib
 from tkinter.messagebox import showinfo
 from typing import List
 
+import numpy as np
 from qtpy.QtCore import qInstallMessageHandler
 from qtpy.QtWidgets import QPushButton, QProgressBar
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLayout, QLabel, QGroupBox
@@ -24,8 +25,8 @@ class MainWidget(QWidget):
 
 
         self.viewer = napari_viewer
-        self.setting_handler = SettingsHandler(parent=self)
-        self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer)
+        self.setting_handler = SettingsHandler(parent=self) #1
+        self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
 
@@ -47,16 +48,18 @@ class MainWidget(QWidget):
         pane = QGroupBox(self)
         pane.setTitle("Analysis")
         pane.setLayout(QVBoxLayout())
-        analysis_button = QPushButton("Cellpose all images")
-        analysis_button.clicked.connect(self._run_analysis)
+        self.analysis_button = QPushButton("Cellpose all images")
+        self.analysis_button.clicked.connect(self._run_analysis)
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setMinimum(0)
-        pane.layout().addWidget(analysis_button)
+
+        pane.layout().addWidget(self.analysis_button)
         pane.layout().addWidget(self.progress_bar)
+
         self.layout().addWidget(pane)
 
-
-        self._update_widget_settings()
+        print(f"[*] Dev | Settings: {self.setting_handler.get_settings()}")
+        # self._update_widget_settings()
 
 
     def _update_widget_settings(self):
@@ -70,6 +73,7 @@ class MainWidget(QWidget):
         self.result_handler.set_output_path(settings.get("output_folder"))
 
 
+
     def _add_logo(self):
         """
         Add the logo to the widget.
@@ -79,23 +83,46 @@ class MainWidget(QWidget):
         logo_label.setText(f"<img src='{path}' width='320'/>")
         self.layout().addWidget(logo_label)
 
+
+    def _run_estimate(self, image: np.ndarray = None):
+        """
+            Mostly for testing, runs Cellpose SizeModel to estimate diameter.
+        """
+        user = CellposeUser(cellpose_settings=self.setting_handler.get_settings().get("cellpose_settings"))
+
+        diam = user.estimate_size(image)
+
+        return diam
+
+
+
     def _run_analysis(self):
         """Run Cellpose segmentation on all images using background threads."""
         layers = self.image_handler.get_all_images()
         total = len(layers)
+
         if total == 0:
             showinfo("No images loaded")
             return  # No images loaded, nothing to do
 
-        # Create and configure a progress bar for tracking overall progress
-
+        self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("%p%")  # Display percentage text (defaults to "%p%")
+        self.progress_bar.setFormat("%p%")
+
+        # Turn off the analysis button
+        self.analysis_button.setEnabled(False)
+        self.analysis_button.setText(f"Analyzing {total} images...")
+
+
 
         # Initialize counter for completed images
         self._completed = 0
         scale = self.image_handler.get_scale(0)
+        cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
+
+        if cellpose_settings.get("diameter") is None:
+            cellpose_settings["diameter"] = self._run_estimate(image=layers[0])
         if scale.shape == (3,):
             scale = scale[1:]
 
@@ -110,21 +137,23 @@ class MainWidget(QWidget):
             # If all images are processed, ensure progress bar reaches 100%
             if self._completed == total:
                 self.progress_bar.setValue(total)
-                # (Optional) You could hide or disable the progress bar here if desired
+                self.analysis_button.setEnabled(True)
+                self.analysis_button.setText("Cellpose all images")
 
         # Launch a worker thread for each image to run Cellpose in parallel
-        for layer in layers:
+        for data in layers:
             # If layers are Napari layer objects, get the numpy data and name
-            image_data = getattr(layer, "data", layer)  # layer.data if layer is an Image layer
-            image_name = getattr(layer, "name", "Image")  # layer.name if available
-            cellpose_user = CellposeUser()
+            image_name = getattr(data, "name", "Image")  # layer.name if available
+            cellpose_user = CellposeUser(cellpose_settings=cellpose_settings)
 
-            worker = SegmentationWorker(image_data, image_name, cellpose_user)
+            worker = SegmentationWorker(data, image_name, cellpose_user)
             worker.result.connect(_on_segmentation_result)
             worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
 
             self._workers.append(worker)
             worker.start()
+
+
 
     def _cleanup_worker(self, worker):
         if worker in self._workers:

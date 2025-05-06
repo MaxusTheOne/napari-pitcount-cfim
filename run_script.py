@@ -17,6 +17,8 @@ def launch_napari_dev_mode(czi_file=None, points=None):
     print("Launching Napari in dev mode...")
 
     viewer = napari.Viewer(ndisplay=2, show= False)
+
+    import cellpose #Imports to expose to the Ipython console
     # Activate your plugin (psf_analysis_CFIM)
     try:
         viewer.window.add_plugin_dock_widget("napari-pitcount-cfim", widget_name="Analyze pit count - CFIM")
