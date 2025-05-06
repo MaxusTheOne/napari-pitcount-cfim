@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Bump version on PR merge"]
     types:
-      - completedd
+      - completed
 
 jobs:
   publish:
