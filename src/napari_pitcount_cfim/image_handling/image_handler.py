@@ -8,12 +8,17 @@ class ImageHandler(QWidget):
     """
         A class to handle and manage transfer of images between the napari viewer and the plugin.
     """
-    def __init__(self, napari_viewer, parent=None, output_path=None, prompt_for_folder=True):
+    def __init__(self, napari_viewer, parent=None, settings_handler=None):
         super().__init__(parent)
+        self.settings_handler = settings_handler
+
+        if settings_handler is None:
+            raise ValueError("Settings handler is not set. Please provide a settings handler.")
+
+        self.settings = settings_handler.get_settings().get("file_settings")
         self.viewer = napari_viewer
         self.parent = parent
-        self.output_path = output_path
-        self.prompt_for_folder = prompt_for_folder
+        self.input_path = self.settings.get("input_folder")
         self.load_button = None
 
     def get_all_images(self):
@@ -46,13 +51,8 @@ class ImageHandler(QWidget):
         """
         if not isinstance(path, str):
             raise ValueError("Output path must be a string.")
-        self.output_path = path
+        self.input_path = path
 
-    def enable_folder_prompt(self, enabled: bool):
-        """
-        Turn on/off the folder‐selection dialog.
-        """
-        self.prompt_for_folder = bool(enabled)
 
     def get_scale(self, index):
         """
@@ -75,27 +75,30 @@ class ImageHandler(QWidget):
         folder = QFileDialog.getExistingDirectory(
             self,
             "Select image folder",
-            str(self.output_path)
+            str(self.input_path)
         )
         if not folder:
             return False
-        self.output_path = folder
+        self.settings_handler.update_setting("file_settings.input_folder", folder)
+        self.settings = self.settings_handler.get_updated_settings().get("file_settings")
         return True
 
     def _load_images(self):
         """
         Load images from a folder into the napari viewer.
         """
+        # 0) Update the settings:
+        self.settings = self.settings_handler.get_updated_settings().get("file_settings")
         # 1) If prompting is enabled, ask the user now:
-        if self.prompt_for_folder:
+        if self.settings.get("folder_prompt"):
             if not self._select_folder():
                 return  # user cancelled, so do nothing
 
         # 2) Make sure we have a path (either from the dialog or pre‐set):
-        if not self.output_path:
-            raise ValueError("Output path is not set. Please set the output path before loading images.")
+        if not self.settings.get("input_folder"):
+            raise ValueError("input path is not set. Please set the input path before loading images.")
 
         # 3) Collect and open:
-        img_dir   = Path(self.output_path)
+        img_dir   = Path(self.settings.get("input_folder"))
         img_paths = sorted(img_dir.iterdir())
         self.viewer.open(img_paths, plugin=None)

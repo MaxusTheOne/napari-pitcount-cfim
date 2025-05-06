@@ -25,8 +25,8 @@ class MainWidget(QWidget):
 
 
         self.viewer = napari_viewer
-        self.setting_handler = SettingsHandler(parent=self)
-        self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer)
+        self.setting_handler = SettingsHandler(parent=self) #1
+        self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
 
@@ -53,14 +53,13 @@ class MainWidget(QWidget):
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setMinimum(0)
 
-
         pane.layout().addWidget(self.analysis_button)
         pane.layout().addWidget(self.progress_bar)
 
         self.layout().addWidget(pane)
 
-
-        self._update_widget_settings()
+        print(f"[*] Dev | Settings: {self.setting_handler.get_settings()}")
+        # self._update_widget_settings()
 
 
     def _update_widget_settings(self):
@@ -74,6 +73,7 @@ class MainWidget(QWidget):
         self.result_handler.set_output_path(settings.get("output_folder"))
 
 
+
     def _add_logo(self):
         """
         Add the logo to the widget.
@@ -82,6 +82,19 @@ class MainWidget(QWidget):
         logo_label = QLabel()
         logo_label.setText(f"<img src='{path}' width='320'/>")
         self.layout().addWidget(logo_label)
+
+
+    def _run_estimate(self, image: np.ndarray = None):
+        """
+            Mostly for testing, runs Cellpose SizeModel to estimate diameter.
+        """
+        user = CellposeUser(cellpose_settings=self.setting_handler.get_settings().get("cellpose_settings"))
+
+        diam = user.estimate_size(image)
+
+        return diam
+
+
 
     def _run_analysis(self):
         """Run Cellpose segmentation on all images using background threads."""
@@ -99,6 +112,7 @@ class MainWidget(QWidget):
 
         # Turn off the analysis button
         self.analysis_button.setEnabled(False)
+        self.analysis_button.setText(f"Analyzing {total} images...")
 
 
 
@@ -106,6 +120,9 @@ class MainWidget(QWidget):
         self._completed = 0
         scale = self.image_handler.get_scale(0)
         cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
+
+        if cellpose_settings.get("diameter") is None:
+            cellpose_settings["diameter"] = self._run_estimate(image=layers[0])
         if scale.shape == (3,):
             scale = scale[1:]
 
@@ -121,6 +138,7 @@ class MainWidget(QWidget):
             if self._completed == total:
                 self.progress_bar.setValue(total)
                 self.analysis_button.setEnabled(True)
+                self.analysis_button.setText("Cellpose all images")
 
         # Launch a worker thread for each image to run Cellpose in parallel
         for data in layers:

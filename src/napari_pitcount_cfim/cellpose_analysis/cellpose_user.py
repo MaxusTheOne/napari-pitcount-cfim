@@ -4,6 +4,7 @@ Test script to run Cellpose segmentation on a TIFF file and visualize results in
 
 Modify `TIFF_PATH` below to point to your .tiff file.
 """
+import cellpose.models
 import napari
 import numpy as np
 from cellpose import models
@@ -11,6 +12,21 @@ from cellpose.utils import remove_edge_masks
 from cellpose.dynamics import remove_bad_flow_masks
 import tifffile
 import importlib.resources as pkg_resources
+
+"""
+/Lib/site-packages/cellpose/models.py:38
+normalize params = {
+    "lowhigh": None,
+    "percentile": None,
+    "normalize": True,
+    "norm3D": True,
+    "sharpen_radius": 0,
+    "smooth_radius": 0,
+    "tile_norm_blocksize": 0,
+    "tile_norm_smooth3D": 1,
+    "invert": False
+}
+"""
 
 class CellposeUser:
     def __init__(self, cellpose_settings = None):
@@ -24,10 +40,23 @@ class CellposeUser:
             self.cellpose_settings = cellpose_settings
         else:
             self.cellpose_settings = {
+                "diameter": None,
                 "border_filter": True,
                 "model_type": "cyto3",
                 "gpu": False,
+                "sharpen_radius": 0,
             }
+        self.normalize_params = {
+            "lowhigh": None,
+            "percentile": None,
+            "normalize": True,
+            "norm3D": True,
+            "sharpen_radius": self.cellpose_settings["sharpen_radius"],
+            "smooth_radius": 0,
+            "tile_norm_blocksize": 0,
+            "tile_norm_smooth3D": 1,
+            "invert": False
+        }
 
         try:
             self.model = models.Cellpose(
@@ -46,7 +75,7 @@ class CellposeUser:
         img = tifffile.imread(tiff_path)
         return self.process_image(img, output_dir)
 
-    def process_image(self, img: np.ndarray, output_dir: str = ""):
+    def process_image(self, img: np.ndarray):
         """
         Run Cellpose segmentation on a numpy array
 
@@ -54,14 +83,15 @@ class CellposeUser:
             img: np.ndarray
             output_dir: directory to save individual cell crops
         """
-        print(f"Img shape: {img.shape}")
+        print(f"Dev | Got diameter: {self.cellpose_settings['diameter']}")
+
         masks_list, flows, styles, diams = self.model.eval(
             [img],
             channels=[0, 0],
             resample=True,
-            normalize=True,
+            normalize=self.normalize_params,
             invert=False,
-            diameter=None,
+            diameter=self.cellpose_settings["diameter"],
             flow_threshold=0.4,
             cellprob_threshold=0.0,
             augment=False,
@@ -78,7 +108,20 @@ class CellposeUser:
 
         return masks, flows[0], styles, diams
 
+    def estimate_size(self, img: np.ndarray):
+        """
+        Estimate the size of the objects in the image.
 
+        Parameters:
+            img: np.ndarray
+        """
+
+        if self.cellpose_settings["diameter"] is not None:
+            return self.cellpose_settings["diameter"]
+        size_model = self.model.sz
+        diameter = size_model.eval(img, [0, 0], normalize=self.normalize_params)
+        print(f"[*] Estimated diameter: {diameter}")
+        return diameter[0]
 
 
 # if __name__ == '__main__':

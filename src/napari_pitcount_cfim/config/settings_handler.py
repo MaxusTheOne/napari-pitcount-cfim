@@ -13,8 +13,9 @@ from napari_pitcount_cfim.config.settings_structure import CFIMSettings
 base_name = "napari_pitcount_cfim"
 
 class SettingsHandler(QWidget):
-    def __init__(self, path=None, parent=None, debug=False):
+    def __init__(self, path=None, parent=None, debug=True):
         super().__init__(parent=parent)
+        self.settings: BaseModel
         self.debug = debug
         if path:
             self.settings_folder_path = os.path.expanduser(path)
@@ -27,7 +28,6 @@ class SettingsHandler(QWidget):
 
         self.settings_file_path = os.path.join(self.settings_folder_path, self.settings_name)
 
-        self._settings: BaseModel
         self._load_settings()
         if not self.settings:
             self._make_settings_file()
@@ -58,7 +58,7 @@ class SettingsHandler(QWidget):
         else:  # assume Linux or similar
             subprocess.call(["xdg-open", file_path])
 
-    def update_settings(self):
+    def refresh_settings(self):
         """
             Updates and validates settings
         """
@@ -66,16 +66,25 @@ class SettingsHandler(QWidget):
 
     def get_updated_settings(self):
         """
-            Returns the updated settings as a dictionary.
+            Returns the updated settings
         """
         self._load_settings()
-        return self.settings.model_dump()
+        return self.settings.as_dict_with_virtuals()
 
     def get_settings(self):
         """
-            Returns the settings as a dictionary.
+            Returns the settings
         """
-        return self.settings.model_dump()
+
+        return self.settings.as_dict_with_virtuals()
+
+    def update_setting(self, path: str, value):
+        parts = path.split(".")
+        obj = self.settings
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+        self._save_settings()
 
     def _load_settings(self):
         if os.path.exists(self.settings_file_path):
@@ -88,6 +97,7 @@ class SettingsHandler(QWidget):
 
                     # Validate final result
                     self.settings = CFIMSettings(**updated_data)
+                    self.settings.model_post_init(None)
 
                     # Save only if new fields were added or version was bumped
                     if was_migrated:
