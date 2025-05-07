@@ -81,7 +81,7 @@ def process_all():
             label_czi = label_grab[0]
 
             image = load_czi(image_czi)
-            label = load_czi(label_czi, channel_index=1).astype(np.uint8)
+            label = load_czi(label_czi, channel_index=1)
 
             features = extract_vgg_features(image, RESIZE_TO)
 

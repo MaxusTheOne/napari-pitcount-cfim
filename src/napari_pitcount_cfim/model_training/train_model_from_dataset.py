@@ -1,24 +1,24 @@
-import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
-from sklearn.model_selection import train_test_split
 from pathlib import Path
+import numpy as np
 import joblib
 import random
 
 # --- CONFIGURATION ---
 CONFIG = {
-    "feature_limit": 2,             # Use only first N VGG features (e.g. 2/128)
-    "max_images": 10,               # Use only first N image pairs (None = all)
-    "n_estimators": 50,             # Number of trees in Random Forest (smaller = less RAM)
-    "max_depth": 20,                # Max depth of each tree (None = unlimited, but memory-heavy)
-    "n_jobs": 2,                    # CPU cores to use (-1 = all, 1 = single-threaded)
-    "random_seed": 42
+    "feature_limit": 2,             # Use only first N VGG features (e.g. 2/128) | None = all | Affects RAM
+    "max_images": 10,               # Use only first N image pairs (None = all) | Affects RAM
+    "n_estimators": 50,             # Number of trees in Random Forest | Default: 50 | Affects RAM
+    "max_depth": 20,                # Max depth of each tree (None = unlimited, but memory-heavy) | Default: 20 | Affects RAM
+    "n_jobs": 2,                    # CPU cores to use (-1 = all, 1 = single-threaded) | Default: 2 | Affects RAM
+    "verbosity": 1,                 # Verbosity level (0 = silent, 1 = some output, 2 = detailed) | Default: 0 | Affects CPU
+    "random_seed": 42,
 }
 
 
 # --- Paths ---
-PROCESSED_DIR = Path(__file__).parent / "data" / "processed"
+PROCESSED_DIR = Path(__file__).parent / "training_data" / "processed"
 MODEL_PATH = PROCESSED_DIR / "rf_model.joblib"
 
 
@@ -42,6 +42,13 @@ def load_dataset(uuid_list):
         if CONFIG["feature_limit"]:
             X = X[..., :CONFIG["feature_limit"]]
 
+        X_flat = X.reshape(-1, X.shape[-1])
+        y_flat = y.flatten()
+
+        if X_flat.shape[0] != y_flat.shape[0]:
+            print(f"⚠️ Skipping {uid}: feature/label size mismatch ({X_flat.shape[0]} vs {y_flat.shape[0]})")
+            continue
+
         X_list.append(X.reshape(-1, X.shape[-1]))  # (H*W, F)
         y_list.append(y.flatten())  # (H*W,)
 
@@ -54,7 +61,8 @@ def train_rf_classifier(X_train, y_train):
         max_depth=CONFIG["max_depth"],
         class_weight="balanced",
         n_jobs=CONFIG["n_jobs"],
-        random_state=CONFIG["random_seed"]
+        random_state=CONFIG["random_seed"],
+        verbose=CONFIG["verbosity"]
     )
     clf.fit(X_train, y_train)
     return clf
@@ -66,12 +74,12 @@ def evaluate_model(clf, X_test, y_test):
     print(classification_report(y_test, y_pred, digits=4))
 
 
-def main(feature_limit=None):
+def main():
     train_uuids, test_uuids = get_uuid_split()
     print(f"Training on {len(train_uuids)} images, testing on {len(test_uuids)}")
 
-    X_train, y_train = load_dataset(train_uuids, feature_limit)
-    X_test, y_test = load_dataset(test_uuids, feature_limit)
+    X_train, y_train = load_dataset(train_uuids)
+    X_test, y_test = load_dataset(test_uuids)
 
     print(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
 
@@ -84,4 +92,4 @@ def main(feature_limit=None):
 
 if __name__ == "__main__":
     # Limit to first 2 features for testing
-    main(feature_limit=None)
+    main()
