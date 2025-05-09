@@ -1,8 +1,8 @@
 dev_*/
 
 # Model training
+training_data/
 training_data/*
-/src/napari_pitcount_cfim/model_training/training_data/
 
 # Pycharm and VSCode
 .idea/

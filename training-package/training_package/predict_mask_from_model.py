@@ -2,8 +2,8 @@ import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 from pathlib import Path
-from napari_pitcount_cfim.model_training.load_czi_image_and_label import czi_to_numpy
-from napari_pitcount_cfim.model_training.extract_deep_features import extract_vgg_features
+from training_package.load_czi_image_and_label import czi_to_numpy
+from training_package.extract_deep_features import extract_vgg_features
 
 # --- Config ---
 DATA_PATH = Path(__file__).parent / "training_data"

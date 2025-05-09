@@ -6,7 +6,7 @@ from pathlib import Path
 import joblib
 
 # --- Config ---
-DATA_PATH = Path(__file__).parent / "data"
+DATA_PATH = Path(__file__).parent / "training_data"
 FEATURE_PATH = DATA_PATH / "deep_features.npy"
 LABEL_PATH = DATA_PATH / "label.npy"
 MODEL_PATH = DATA_PATH / "rf_model.joblib"

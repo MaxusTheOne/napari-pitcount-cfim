@@ -85,8 +85,8 @@ def train_model(config: dict = None):
             "n_estimators": config.get("n_estimators", CONFIG.get("n_estimators")),
             "max_depth": config.get("max_depth", CONFIG.get("max_depth")),
             "n_jobs": config.get("n_jobs", CONFIG.get("n_jobs")),
-            # 'verbose' key maps to 'verbosity'
-            "verbosity": config.get("verbose", CONFIG.get("verbosity")),
+            # 'verbosity' key maps to 'verbosity'
+            "verbosity": config.get("verbosity", CONFIG.get("verbosity")),
             "random_seed": config.get("random_seed", CONFIG.get("random_seed")),
         })
     train_uuids, test_uuids = get_uuid_split()

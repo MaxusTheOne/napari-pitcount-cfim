@@ -5,7 +5,7 @@ from pathlib import Path
 # Load from any one processed pair
 default_UUID = "9de436ac-5f1c-4b35-9a45-913d2dd25c68"  # Replace with an actual folder name
 def preview_pair(uuid=default_UUID):
-    PAIR_DIR = Path(__file__).parent / "data" / "processed" / uuid
+    PAIR_DIR = Path(__file__).parent / "training_data" / "processed" / uuid
 
     feature_path = PAIR_DIR / "features.npy"
     label_path = PAIR_DIR / "label.npy"

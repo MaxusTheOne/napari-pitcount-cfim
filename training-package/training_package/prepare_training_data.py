@@ -16,7 +16,7 @@ CONFIG = {
     "channel_index": 1,
     "max_images": None,
     "skip_existing": True,
-    "verbose": True,
+    "verbosity": 1,
     "output_dir": Path(__file__).parent / "training_data" / "processed",
     "dry_run": False
 }
@@ -39,7 +39,7 @@ def extract_vgg_features(image_array, resize_to):
     image_array = image_array.astype(np.float32)
     image_array /= image_array.max()  # scale to [0, 1]
 
-    resized = cv2.resize(image_array, resize_to)
+    resized = cv2.resize(image_array, dsize=resize_to)
     image_rgb = cv2.cvtColor((resized * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
 
     transform = T.Compose([
@@ -62,11 +62,13 @@ def extract_vgg_features(image_array, resize_to):
 
 # --- Main loop ---
 def process_all(config=CONFIG):
-    uuids = [d.name for d in IMAGE_DIR.iterdir() if d.is_dir()]
+    image_dir = config["input_dir"] / "Images"
+    label_dir = config["input_dir"] / "Labels"
+    uuids = [d.name for d in image_dir.iterdir() if d.is_dir()]
     if config["max_images"] is not None:
         uuids = uuids[:config["max_images"]]
 
-    if config["verbose"] > 0:
+    if config["verbosity"] > 0:
         if len(uuids) == config["max_images"]:
             print(f"🔍 Found {len(uuids)} image-label pairs (limited to {config['max_images']})")
         else: print(f"🔍 Found {len(uuids)} image-label pairs")
@@ -79,13 +81,13 @@ def process_all(config=CONFIG):
         label_path = out_dir / "label.npy"
 
         if config["skip_existing"] and feature_path.exists() and label_path.exists():
-            if config["verbose"] > 0:
+            if config["verbosity"] > 0:
                 print(f"❕ Skipping {uid}, already processed.")
             continue
 
         try:
-            image_files = list((IMAGE_DIR / uid).glob("*.czi"))
-            label_files = list((LABEL_DIR / uid).glob("*.czi"))
+            image_files = list((image_dir / uid).glob("*.czi"))
+            label_files = list((label_dir / uid).glob("*.czi"))
 
             if len(image_files) != 1 or len(label_files) != 1:
                 raise RuntimeError(f"{uid}: expected 1 image and 1 label, found {len(image_files)}, {len(label_files)}")
@@ -99,7 +101,7 @@ def process_all(config=CONFIG):
                 np.save(feature_path, features)
                 np.save(label_path, label)
 
-            if config["verbose"] > 0:
+            if config["verbosity"] > 0:
                 print(f"✅ Processed {uid} | Features: {features.shape} | Label: {label.shape}")
 
         except RuntimeError as e:

@@ -1,5 +1,5 @@
 
-from napari_pitcount_cfim.model_training.load_czi_image_and_label import czi_to_numpy
+from training_package.load_czi_image_and_label import czi_to_numpy
 from torchvision.models import vgg19, VGG19_Weights
 import torchvision.transforms as T
 from pathlib import Path

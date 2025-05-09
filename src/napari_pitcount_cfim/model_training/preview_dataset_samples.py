@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-PROCESSED_DIR = Path(__file__).parent / "data" / "processed"
+PROCESSED_DIR = Path(__file__).parent / "training_data" / "processed"
 uuids = sorted([p.name for p in PROCESSED_DIR.iterdir() if p.is_dir()])
 
 def show_preview(uuid):
