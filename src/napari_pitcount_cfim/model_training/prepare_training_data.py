@@ -35,12 +35,13 @@ def load_czi(path, channel_index=0):
     return squeezed.astype(np.uint16)
 
 # --- Helper: extract features from grayscale uint16 image ---
-def extract_vgg_features(image_array, resize_to):
+def extract_vgg_features(image_array, resize_to=(256, 256)):
     image_array = image_array.astype(np.float32)
     image_array /= image_array.max()  # scale to [0, 1]
 
     resized = cv2.resize(image_array, resize_to)
     image_rgb = cv2.cvtColor((resized * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
+
 
     transform = T.Compose([
         T.ToTensor(),

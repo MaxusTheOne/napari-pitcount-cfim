@@ -64,6 +64,8 @@ def extract_vgg_features(image_array, resize_to):
 def process_all(config=CONFIG):
     image_dir = config["input_dir"] / "Images"
     label_dir = config["input_dir"] / "Labels"
+    if config["verbosity"] > 1:
+        print(f"Processing settings: {config}")
     uuids = [d.name for d in image_dir.iterdir() if d.is_dir()]
     if config["max_images"] is not None:
         uuids = uuids[:config["max_images"]]
@@ -90,6 +92,8 @@ def process_all(config=CONFIG):
             label_files = list((label_dir / uid).glob("*.czi"))
 
             if len(image_files) != 1 or len(label_files) != 1:
+                # Remove the uuid directory if it has no valid files
+                out_dir.rmdir()
                 raise RuntimeError(f"{uid}: expected 1 image and 1 label, found {len(image_files)}, {len(label_files)}")
 
             image = load_czi(image_files[0])

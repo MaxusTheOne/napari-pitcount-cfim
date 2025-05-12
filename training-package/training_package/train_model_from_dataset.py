@@ -75,6 +75,9 @@ def evaluate_model(clf, X_test, y_test):
     print("\n📊 Evaluation on held-out test set:")
     print(classification_report(y_test, y_pred, digits=4))
 
+    if CONFIG.get("show_prediction_in_eval"):
+        _plot_prediction(X_test[0], y_test[0], y_pred[0])
+
 
 def train_model(config: dict = None):
     # Override module CONFIG if custom settings provided
@@ -104,7 +107,6 @@ def train_model(config: dict = None):
     if config["verbosity"] > 0:
         print(f"🔍 Loaded {len(train_uuids)} training and {len(test_uuids)} test samples")
         print(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
-        print(f"Train labels: {np.unique(y_train)}, Test labels: {np.unique(y_test)}")
 
 
     clf = train_rf_classifier(X_train, y_train)
@@ -114,7 +116,22 @@ def train_model(config: dict = None):
     if CONFIG["verbosity"] > 0:
         print(f"✅ Model trained and saved to {MODEL_PATH}")
 
+def _plot_prediction(image, label_mask, pred_mask):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    ax[0].imshow(image)
+    ax[0].set_title("Image")
+    ax[0].axis("off")
 
+    ax[1].imshow(label_mask, cmap="gray")
+    ax[1].set_title("Label Mask")
+    ax[1].axis("off")
+
+    ax[2].imshow(pred_mask, cmap="gray")
+    ax[2].set_title("Predicted Mask")
+    ax[2].axis("off")
+
+    plt.show()
 
 if __name__ == "__main__":
     # Limit to first 2 features for testing

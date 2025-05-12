@@ -8,7 +8,7 @@ from training_package.train_model_from_dataset import train_model
 deep_training_config = {
     "feature_limit": 128,
     "max_images": None,
-    "n_estimators": 300,
+    "n_estimators": 100,
     "max_depth": None,
     "n_jobs": -1,
 
@@ -18,13 +18,14 @@ deep_training_config = {
 
     }
 light_training_config = {
-    "feature_limit": 2,
+    "feature_limit": 4,
     "max_images": 10,
     "n_estimators": 50,
     "max_depth": 20,
     "n_jobs": -1,
     "random_seed": 42,
     "resize_to": (1024, 1024),
+    "skip_existing": False,
 }
 
 default_config = {

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import napari.layers
+import numpy as np
 from qtpy.QtWidgets import QWidget, QPushButton, QFileDialog
 
 
@@ -29,6 +30,14 @@ class ImageHandler(QWidget):
             raise ValueError("No layers in the viewer.")
         return [layer.data for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
 
+    def get_all_images_with_names(self):
+        """
+            Get all images from the napari viewer with their names.
+        """
+        if not self.viewer.layers:
+            raise ValueError("No layers in the viewer.")
+        return [(layer.name, layer.data) for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
+
     def get_all_labels(self):
         """
             Get all labels from the napari viewer.
@@ -36,6 +45,26 @@ class ImageHandler(QWidget):
         if not self.viewer.layers:
             raise ValueError("No layers in the viewer.")
         return [layer.data for layer in self.viewer.layers if isinstance(layer, napari.layers.Labels)]
+
+    def add_image(self, image, name=None):
+        """
+            Add an image to the napari viewer.
+        """
+        if not isinstance(image, np.ndarray):
+            raise TypeError("Image must be a numpy array.")
+        if name is None:
+            name = f"Image {len(self.viewer.layers)}"
+        self.viewer.add_image(image, name=name)
+
+    def add_label(self, label, name=None):
+        """
+            Add a label to the napari viewer.
+        """
+        if not isinstance(label, np.ndarray):
+            raise TypeError("Label must be a numpy array.")
+        if name is None:
+            name = f"Label {len(self.viewer.layers)}"
+        self.viewer.add_labels(label, name=name)
 
     def init_load_button_ui(self):
         """

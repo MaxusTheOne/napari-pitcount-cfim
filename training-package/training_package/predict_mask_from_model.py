@@ -8,7 +8,7 @@ from training_package.extract_deep_features import extract_vgg_features
 # --- Config ---
 DATA_PATH = Path(__file__).parent / "training_data"
 CZI_PATH = DATA_PATH / "TubeImage.czi"  # update or pass as argument
-MODEL_PATH = DATA_PATH / "processed" / "rf_model.joblib"
+MODEL_PATH = DATA_PATH / "modelv1.joblib"
 OUTPUT_MASK_PATH = DATA_PATH / "predicted_mask.png"
 FEATURE_LIMIT = 2
 
@@ -41,7 +41,7 @@ def predict_mask(czi_path=CZI_PATH, model_path=MODEL_PATH, output_path=OUTPUT_MA
         fig, axes = plt.subplots(1, 2, figsize=(10, 5))
         ax1, ax2 = axes
         # Original image
-        ax1.imshow(image, cmap='gray')
+        ax1.imshow(mask, cmap='gray')
         ax1.set_title("Original Image")
         ax1.axis('off')
         # Overlay mask on image
@@ -53,6 +53,8 @@ def predict_mask(czi_path=CZI_PATH, model_path=MODEL_PATH, output_path=OUTPUT_MA
         plt.tight_layout()
         plt.show()
 
+    values, counts = np.unique(mask, return_counts=True)
+    print(dict(zip(values, counts)))
     # Optionally save
     from imageio import imwrite
     imwrite(output_path, mask * 255)  # scale to [0, 255] for PNG

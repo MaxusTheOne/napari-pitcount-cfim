@@ -8,9 +8,11 @@ from napari_pitcount_cfim.model_training.extract_deep_features import extract_vg
 # --- Config ---
 DATA_PATH = Path(__file__).parent / "training_data"
 CZI_PATH = DATA_PATH / "TubeImage.czi"  # update or pass as argument
-MODEL_PATH = DATA_PATH / "processed" / "rf_model.joblib"
+MODEL_PATH = Path(__file__).parent / "models" / "rf_model.joblib"
 OUTPUT_MASK_PATH = DATA_PATH / "predicted_mask.png"
-FEATURE_LIMIT = 2
+LABEL_EX_PATH = DATA_PATH / "Labels" / "8c447699-a8b2-459a-86a6-74a1f59d980c" / "Tube 72 5 fluor.czi"
+FEATURE_LIMIT = 128
+VERBOSE = 2
 
 def predict_mask(czi_path=CZI_PATH, model_path=MODEL_PATH, output_path=OUTPUT_MASK_PATH, visualize=True):
     # Load image and extract deep features
@@ -21,6 +23,8 @@ def predict_mask(czi_path=CZI_PATH, model_path=MODEL_PATH, output_path=OUTPUT_MA
     clf = joblib.load(model_path)
     # Ensure feature dimension matches model expectations
     n_features = clf.n_features_in_
+    if VERBOSE > 0:
+        print(f"Model expects {n_features} features per pixel\nImage has {X_full.shape[2]} features per pixel")
     if X_full.shape[2] < n_features:
         raise ValueError(f"Model expects {n_features} features but input has {X_full.shape[2]}")
     if X_full.shape[2] > n_features:
@@ -31,6 +35,9 @@ def predict_mask(czi_path=CZI_PATH, model_path=MODEL_PATH, output_path=OUTPUT_MA
 
     # Predict
     y_pred = clf.predict(X)
+    if VERBOSE > 0:
+        values, counts = np.unique(y_pred, return_counts=True)
+        print(dict(zip(values, counts)))
 
     # Reshape prediction back to image shape
     mask = y_pred.reshape(H, W).astype(np.uint8)
@@ -53,11 +60,18 @@ def predict_mask(czi_path=CZI_PATH, model_path=MODEL_PATH, output_path=OUTPUT_MA
         plt.tight_layout()
         plt.show()
 
+
     # Optionally save
     from imageio import imwrite
     imwrite(output_path, mask * 255)  # scale to [0, 255] for PNG
     print(f"✅ Mask saved to {output_path}")
 
-if __name__ == "__main__":
-    predict_mask()
 
+
+if __name__ == "__main__":
+    # predict_mask()
+    np_label = czi_to_numpy(LABEL_EX_PATH)
+    values, counts = np.unique(np_label, return_counts=True)
+    print(dict(zip(values, counts)))
+    label_features = extract_vgg_features(czi_to_numpy(LABEL_EX_PATH))
+    print(f"Label features shape: {label_features.shape}")
