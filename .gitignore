@@ -3,6 +3,8 @@ dev_*/
 # Model training
 training_data/
 training_data/*
+*.joblib
+model-training-pack/output
 
 # Pycharm and VSCode
 .idea/

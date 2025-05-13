@@ -4,11 +4,11 @@ Central training pipeline: prepares data and trains a RandomForest model.
 from pathlib import Path
 from training_package.prepare_training_data import process_all
 from training_package.train_model_from_dataset import train_model
-
+import argparse
 deep_training_config = {
-    "feature_limit": 128,
+    "feature_limit": 50,
     "max_images": None,
-    "n_estimators": 100,
+    "n_estimators": 300,
     "max_depth": None,
     "n_jobs": -1,
 
@@ -19,16 +19,18 @@ deep_training_config = {
     }
 light_training_config = {
     "feature_limit": 4,
-    "max_images": 10,
-    "n_estimators": 50,
+    "max_images": 14,
+    "n_estimators": 10,
     "max_depth": 20,
     "n_jobs": -1,
     "random_seed": 42,
-    "resize_to": (1024, 1024),
+    "resize_to": None,
     "skip_existing": False,
 }
 
 default_config = {
+    "model_name": "rf_model.joblib",
+    
     "feature_limit": 2,
     "max_images": 10,
     "n_estimators": 50,
@@ -37,13 +39,14 @@ default_config = {
     "random_seed": 42,
     "verbosity": 2,
     "resize_to": (256, 256),
-    "channel_index": 1,
+    "channel_index": 0,
     "skip_existing": True,
-    "input_dir": Path(__file__).parent / "training_data",
-    "output_dir": Path(__file__).parent / "training_data" / "processed",
+
     "dry_run": False,
 
-    "test_predict_path" : Path(__file__).parent / "training_data" / "TubeImage.czi",
+
+    # "test_predict_path" : Path(__file__).parent / "training_data" / "TubeImage.czi",
+    "test_predict_path" : None,
 }
 
 def prepare_data_and_train(config: dict):
@@ -69,26 +72,38 @@ def prepare_data_and_train(config: dict):
             dry_run: bool
     """
     # Prepare data and train
-    process_all(config)
+    config_changes = process_all(config)
+    print("🔧 Config changes:", {k: v for k, v in config_changes.items() if config.get(k) != v})
+    config.update(config_changes)
     train_model(config)
 
     if config["verbosity"] > 0:
         print("✅ Training pipeline completed successfully.")
 
-    if config.get("test_predict_path") is not None:
-        from training_package.predict_mask_from_model import predict_mask
-        predict_mask(czi_path=config["test_predict_path"])
-        if config["verbosity"] > 0:
-            print("✅ Prediction completed successfully.")
 
 def main():
-    import argparse
+
     parser = argparse.ArgumentParser(description="Train a RandomForest model for pit counting.")
-    parser.add_argument("--config_index", type=int, default=1, help="0 = deep, 1 = light")
+    parser.add_argument("--config-index", type=int, default=1, help="Choose base config: 0 = deep, 1 = light")
+    parser.add_argument("--config-options", type=str, help="JSON-like string for additional config options, e.g., '{\"verbose\":1, \"max_images\":null}'")
+    parser.add_argument("--input-dir", "-i", type=Path, required=True, help="Path to input directory containing images and labels.")
+    parser.add_argument("--output-dir", "-o", type=Path, default=Path.cwd() / "output", help="Path to output directory for trained model.")
+    parser.add_argument("--model-dir", "-m", type=Path, default=Path.cwd() / "models", help="Path to output directory for trained model.")
+
     args = parser.parse_args()
 
     config_pick = [deep_training_config, light_training_config][args.config_index]
     config = {**default_config, **config_pick}
+
+    config["input_dir"] = args.input_dir
+    config["model_dir"] = args.model_dir
+    config["output_dir"] = args.output_dir
+
+
+    if args.config_options:
+        import json
+        config_options = json.loads(args.config_options)
+        config.update(config_options)
 
     print(f"Training with config: {config}")
     prepare_data_and_train(config)

@@ -12,18 +12,35 @@ IMAGE_DIR = DATA_DIR / "Images"
 LABEL_DIR = DATA_DIR / "Labels"
 PROCESSED_DIR = DATA_DIR / "processed"
 CONFIG = {
-    "resize_to": (256, 256),
-    "channel_index": 1,
+    "resize_to": None,
+    "channel_index": 0,
     "max_images": None,
     "skip_existing": True,
-    "verbosity": 1,
+    "verbosity": 2,
     "output_dir": Path(__file__).parent / "training_data" / "processed",
-    "dry_run": False
+    "dry_run": False,
 }
 
 # --- VGG setup once ---
 vgg19 = models.vgg19(weights=models.VGG19_Weights.DEFAULT).features[:9]
 vgg19.eval()
+
+
+def find_max_even_size(image_dir, max_images=None, channel_index=0):
+    min_h, min_w = float('inf'), float('inf')
+    uuids = [d.name for d in image_dir.iterdir() if d.is_dir()]
+    if max_images:
+        uuids = uuids[:max_images]
+    for uid in uuids:
+        path = image_dir / uid / "*.czi"
+        files = list(image_dir.glob(f"{uid}/*.czi"))
+        if not files:
+            continue
+        img = load_czi(files[0], channel_index=channel_index)
+        h, w = img.shape[:2]
+        min_h, min_w = min(min_h, h), min(min_w, w)
+    # round down to even
+    return int(min_h) - int(min_h) % 2, int(min_w) - int(min_w) % 2
 
 # --- Helper: load .czi image ---
 def load_czi(path, channel_index=0):
@@ -48,7 +65,8 @@ def extract_vgg_features(image_array, resize_to):
                     std=[0.229, 0.224, 0.225])
     ])
     input_tensor = transform(image_rgb).unsqueeze(0)
-
+    if CONFIG["verbosity"] > 2:
+        print(f"🔍 Extracting features from {image_array.shape} to {resize_to}")
     with torch.no_grad():
         features = vgg19(input_tensor).squeeze(0)
         upsampled = torch.nn.functional.interpolate(
@@ -61,9 +79,23 @@ def extract_vgg_features(image_array, resize_to):
     return upsampled.permute(1, 2, 0).numpy()  # (H, W, C)
 
 # --- Main loop ---
-def process_all(config=CONFIG):
+def process_all(config=None):
+    if config is None:
+        config = CONFIG
+    else:
+        config = {**CONFIG, **config}
+
     image_dir = config["input_dir"] / "Images"
     label_dir = config["input_dir"] / "Labels"
+    if config.get("resize_to") is None:
+        config["resize_to"] = find_max_even_size(
+            image_dir,
+            max_images=config["max_images"],
+            channel_index=config["channel_index"]
+        )
+        if config["verbosity"] > 0:
+            print(f"🔍 Found max even size: {config['resize_to']}")
+
     if config["verbosity"] > 1:
         print(f"Processing settings: {config}")
     uuids = [d.name for d in image_dir.iterdir() if d.is_dir()]
@@ -74,6 +106,9 @@ def process_all(config=CONFIG):
         if len(uuids) == config["max_images"]:
             print(f"🔍 Found {len(uuids)} image-label pairs (limited to {config['max_images']})")
         else: print(f"🔍 Found {len(uuids)} image-label pairs")
+
+        print(f'output_dir: {config["output_dir"]}')
+
 
     for uid in uuids:
         out_dir = config["output_dir"] / uid
@@ -99,6 +134,12 @@ def process_all(config=CONFIG):
             image = load_czi(image_files[0])
             label = load_czi(label_files[0], channel_index=config["channel_index"])
 
+            if not np.any(label != 0):
+                raise ValueError("Label array contains only zeros")
+
+            # ninja code: label > 1 makes a bool array
+            label[label > 1] = 1
+
             features = extract_vgg_features(image, config["resize_to"])
 
             if not config["dry_run"]:
@@ -110,7 +151,12 @@ def process_all(config=CONFIG):
 
         except RuntimeError as e:
             print(f"❌ Error with {uid}: {e}")
+        except ValueError as e:
+            print(f"❌❌❌ Error with {uid}: {e}")
+
+    return config
 
 
 if __name__ == "__main__":
     process_all()
+

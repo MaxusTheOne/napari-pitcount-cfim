@@ -1,3 +1,6 @@
+import json
+from pprint import pprint
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 from pathlib import Path
@@ -14,16 +17,15 @@ CONFIG = {
     "n_jobs": 2,                    # CPU cores to use (-1 = all, 1 = single-threaded) | Default: 2 | Affects RAM
     "verbosity": 1,                 # Verbosity level (0 = silent, 1 = some output, 2 = detailed) | Default: 0 | Affects CPU
     "random_seed": 42,
+    "model_name": "rf_model",       # Model name for saving | Default: "rf_model"
 }
 
 
 # --- Paths ---
 PROCESSED_DIR = Path(__file__).parent / "training_data" / "processed"
-MODEL_PATH = PROCESSED_DIR / "rf_model.joblib"
 
-
-def get_uuid_split(train_ratio=2 / 3):
-    uuids = sorted([p.name for p in PROCESSED_DIR.iterdir() if (p / "features.npy").exists()])
+def get_uuid_split(train_ratio=2 / 3, out_dir=PROCESSED_DIR):
+    uuids = sorted([p.name for p in out_dir.iterdir() if (p / "features.npy").exists()])
     random.seed(CONFIG["random_seed"])
     random.shuffle(uuids)
     if CONFIG["max_images"] is not None:
@@ -32,10 +34,10 @@ def get_uuid_split(train_ratio=2 / 3):
     return uuids[:split_idx], uuids[split_idx:]
 
 
-def load_dataset(uuid_list):
+def load_dataset(uuid_list, out_dir):
     X_list, y_list = [], []
     for uid in uuid_list:
-        pair_path = PROCESSED_DIR / uid
+        pair_path = out_dir / uid
         X = np.load(pair_path / "features.npy")
         y = np.load(pair_path / "label.npy")
 
@@ -91,18 +93,30 @@ def train_model(config: dict = None):
             # 'verbosity' key maps to 'verbosity'
             "verbosity": config.get("verbosity", CONFIG.get("verbosity")),
             "random_seed": config.get("random_seed", CONFIG.get("random_seed")),
-        })
-    train_uuids, test_uuids = get_uuid_split()
+            "model_name": config.get("model_name", CONFIG.get("model_name")),
+            "out_dir": config.get("output_dir", PROCESSED_DIR)
 
-    if CONFIG["verbosity"] > 0:
+        })
+    model_dir = Path(config.get("model_dir", Path(__file__).parent / "models"))
+    model_dir.mkdir(parents=True, exist_ok=True)
+    if config.get("verbosity") > 1:
+        print(f"CONFIG:")
+        pprint(CONFIG)
+    train_uuids, test_uuids = get_uuid_split(out_dir=CONFIG.get("out_dir", PROCESSED_DIR))
+
+    if config["random_seed"] is None:
+        random.seed()
+        config["random_seed"] = random.randint(1, 10000)
+
+    if CONFIG["verbosity"] == 1:
         print(f"🔍 Training with {len(train_uuids)} image-label pairs")
         print(f"🔍 Feature limit: {CONFIG['feature_limit']}")
         print(f"🔍 Max images: {CONFIG['max_images']}")
         print(f"🔍 Random seed: {CONFIG['random_seed']}")
 
 
-    X_train, y_train = load_dataset(train_uuids)
-    X_test, y_test = load_dataset(test_uuids)
+    X_train, y_train = load_dataset(train_uuids, CONFIG["out_dir"])
+    X_test, y_test = load_dataset(test_uuids, CONFIG["out_dir"])
 
     if config["verbosity"] > 0:
         print(f"🔍 Loaded {len(train_uuids)} training and {len(test_uuids)} test samples")
@@ -112,9 +126,19 @@ def train_model(config: dict = None):
     clf = train_rf_classifier(X_train, y_train)
     evaluate_model(clf, X_test, y_test)
 
-    joblib.dump(clf, MODEL_PATH)
+    joblib.dump(clf, model_dir / (CONFIG["model_name"] + ".joblib"))
+
+    meta = {
+        "resize_to": config["resize_to"],
+        "feature_limit": config["feature_limit"],
+        "model_name": config["model_name"]
+    }
+    with open(model_dir / (CONFIG.get("model_name", "")+'metadata.json'), "w") as f:
+        json.dump(meta, f, indent=2)
+
     if CONFIG["verbosity"] > 0:
-        print(f"✅ Model trained and saved to {MODEL_PATH}")
+        print(f'✅ Model trained and saved to {model_dir} / {CONFIG["model_name"]}')
+    print(f"✅ Metadata → {model_dir / (CONFIG.get("model_name", "")+'metadata.json')}")
 
 def _plot_prediction(image, label_mask, pred_mask):
     import matplotlib.pyplot as plt
