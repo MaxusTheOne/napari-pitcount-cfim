@@ -1,162 +1,157 @@
+#!/usr/bin/env python3
+"""
+prepare_training_data.py
+
+Extract deep features (128-dim) from grayscale microscopy images using VGG19 up to conv2_2,
+fit a 50-d Gaussian random projection on the pooled features, and save both raw and reduced features
+for downstream classifier training.
+
+This module exposes a `prepare_training_data` function that can be imported and called by other scripts.
+It also supports command-line execution with a JSON config or explicit arguments.
+"""
+import os
+import json
+import argparse
 from pathlib import Path
 import numpy as np
-from czifile import CziFile
 import cv2
 import torch
-import torchvision.models as models
+import torch.nn.functional as F
 import torchvision.transforms as T
+from torchvision.models import vgg19, VGG19_Weights
+from joblib import dump
+from sklearn.random_projection import GaussianRandomProjection
+import czifile
 
-# --- Paths ---
-DATA_DIR = Path(__file__).parent / "training_data"
-IMAGE_DIR = DATA_DIR / "Images"
-LABEL_DIR = DATA_DIR / "Labels"
-PROCESSED_DIR = DATA_DIR / "processed"
-CONFIG = {
-    "resize_to": None,
-    "channel_index": 0,
-    "max_images": None,
-    "skip_existing": True,
-    "verbosity": 2,
-    "output_dir": Path(__file__).parent / "training_data" / "processed",
-    "dry_run": False,
-}
-
-# --- VGG setup once ---
-vgg19 = models.vgg19(weights=models.VGG19_Weights.DEFAULT).features[:9]
-vgg19.eval()
+# Define VGG preprocessing and model (up to conv2_2)
+VGG_TRANSFORM = T.Compose([
+    T.ToTensor(),
+    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+vgg_conv2_2 = vgg19(weights=VGG19_Weights.DEFAULT).features[:9]
+vgg_conv2_2.eval()
 
 
-def find_max_even_size(image_dir, max_images=None, channel_index=0):
-    min_h, min_w = float('inf'), float('inf')
-    uuids = [d.name for d in image_dir.iterdir() if d.is_dir()]
-    if max_images:
-        uuids = uuids[:max_images]
-    for uid in uuids:
-        path = image_dir / uid / "*.czi"
-        files = list(image_dir.glob(f"{uid}/*.czi"))
-        if not files:
-            continue
-        img = load_czi(files[0], channel_index=channel_index)
-        h, w = img.shape[:2]
-        min_h, min_w = min(min_h, h), min(min_w, w)
-    # round down to even
-    return int(min_h) - int(min_h) % 2, int(min_w) - int(min_w) % 2
+def load_gray(path: Path) -> np.ndarray:
+    """
+    Load an image (CZI or standard formats) as 2D uint8 grayscale.
+    """
+    arr = czifile.imread(str(path)) if path.suffix.lower() == '.czi' else cv2.imread(
+        str(path), cv2.IMREAD_UNCHANGED
+    )
+    arr = np.squeeze(arr)
+    # Convert multi-channel to gray
+    if arr.ndim == 3:
+        channels = arr.shape[-1]
+        if channels in (3, 4):
+            rgb = arr[..., :3] if channels == 4 else arr
+            rgb = rgb.astype(np.float32)
+            if rgb.max() > 0:
+                rgb = rgb / rgb.max() * 255
+            arr = cv2.cvtColor(rgb.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        else:
+            arr = arr[..., 0]
+    # Scale to uint8
+    arr = arr.astype(np.float32)
+    if arr.max() > 0:
+        arr = arr / arr.max() * 255
+    return arr.astype(np.uint8)
 
-# --- Helper: load .czi image ---
-def load_czi(path, channel_index=0):
-    with CziFile(path) as czi:
-        data = czi.asarray()
-    squeezed = np.squeeze(data)
-    if squeezed.ndim == 3:
-        return squeezed[channel_index].astype(np.uint16)
-    return squeezed.astype(np.uint16)
 
-# --- Helper: extract features from grayscale uint16 image ---
-def extract_vgg_features(image_array, resize_to):
-    image_array = image_array.astype(np.float32)
-    image_array /= image_array.max()  # scale to [0, 1]
+def extract_raw_features(
+    gray_img: np.ndarray,
+    vgg_input_size: tuple
+) -> np.ndarray:
+    """
+    Extract raw VGG19 conv2_2 features for a grayscale image.
 
-    resized = cv2.resize(image_array, dsize=resize_to)
-    image_rgb = cv2.cvtColor((resized * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
-
-    transform = T.Compose([
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225])
-    ])
-    input_tensor = transform(image_rgb).unsqueeze(0)
-    if CONFIG["verbosity"] > 2:
-        print(f"🔍 Extracting features from {image_array.shape} to {resize_to}")
+    gray_img: 2D uint8 array
+    vgg_input_size: (height, width) for VGG input
+    returns: H×W×128 float32 feature map
+    """
+    H0, W0 = gray_img.shape
+    # Resize for VGG input
+    resized = cv2.resize(gray_img, dsize=vgg_input_size[::-1], interpolation=cv2.INTER_LINEAR)
+    rgb = cv2.cvtColor(resized, cv2.COLOR_GRAY2RGB)
+    x = VGG_TRANSFORM(rgb).unsqueeze(0)
     with torch.no_grad():
-        features = vgg19(input_tensor).squeeze(0)
-        upsampled = torch.nn.functional.interpolate(
-            features.unsqueeze(0),
-            size=image_array.shape,
-            mode='bilinear',
-            align_corners=False
-        ).squeeze(0)
-
-    return upsampled.permute(1, 2, 0).numpy()  # (H, W, C)
-
-# --- Main loop ---
-def process_all(config=None):
-    if config is None:
-        config = CONFIG
-    else:
-        config = {**CONFIG, **config}
-
-    image_dir = config["input_dir"] / "Images"
-    label_dir = config["input_dir"] / "Labels"
-    if config.get("resize_to") is None:
-        config["resize_to"] = find_max_even_size(
-            image_dir,
-            max_images=config["max_images"],
-            channel_index=config["channel_index"]
-        )
-        if config["verbosity"] > 0:
-            print(f"🔍 Found max even size: {config['resize_to']}")
-
-    if config["verbosity"] > 1:
-        print(f"Processing settings: {config}")
-    uuids = [d.name for d in image_dir.iterdir() if d.is_dir()]
-    if config["max_images"] is not None:
-        uuids = uuids[:config["max_images"]]
-
-    if config["verbosity"] > 0:
-        if len(uuids) == config["max_images"]:
-            print(f"🔍 Found {len(uuids)} image-label pairs (limited to {config['max_images']})")
-        else: print(f"🔍 Found {len(uuids)} image-label pairs")
-
-        print(f'output_dir: {config["output_dir"]}')
+        feats = vgg_conv2_2(x)  # 1×128×h'×w'
+        feats = F.interpolate(feats, size=vgg_input_size, mode='bilinear', align_corners=False)
+    fmap = feats.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    # Upsample to original resolution if different
+    if vgg_input_size != (H0, W0):
+        fmap = cv2.resize(
+            fmap, (W0, H0), interpolation=cv2.INTER_LINEAR
+        ).reshape(H0, W0, -1)
+    return fmap.astype(np.float32)
 
 
-    for uid in uuids:
-        out_dir = config["output_dir"] / uid
-        out_dir.mkdir(parents=True, exist_ok=True)
+def prepare_training_data(
+    images_dir: Path,
+    processed_dir: Path,
+    models_dir: Path,
+    n_components: int = 50,
+    random_state: int = 42,
+    vgg_input_size: tuple = (256, 256)
+):
+    """
+    Extract raw features, fit a random projection, and save reduced features.
 
-        feature_path = out_dir / "features.npy"
-        label_path = out_dir / "label.npy"
+    images_dir: Path to UUID-folders with images
+    processed_dir: Path under which 'raw/' and 'reduced/' will be created
+    models_dir: Path where transformer_50.joblib will be saved
+    n_components: Number of projected dimensions
+    random_state: Seed for reproducibility
+    vgg_input_size: Input size for VGG feature extraction
+    """
+    raw_dir = processed_dir / 'raw'
+    red_dir = processed_dir / 'reduced'
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    red_dir.mkdir(parents=True, exist_ok=True)
+    models_dir.mkdir(parents=True, exist_ok=True)
 
-        if config["skip_existing"] and feature_path.exists() and label_path.exists():
-            if config["verbosity"] > 0:
-                print(f"❕ Skipping {uid}, already processed.")
+    # Step 1: extract raw features
+    raw_paths = []
+    for uid_folder in images_dir.iterdir():
+        if not uid_folder.is_dir():
             continue
+        imgs = list(uid_folder.glob('*'))
+        if len(imgs) != 1:
+            print(f"Skipping {uid_folder.name}: expected 1 image, found {len(imgs)}")
+            continue
+        gray = load_gray(imgs[0])
+        fmap = extract_raw_features(gray, vgg_input_size)
+        out_raw = raw_dir / f"{uid_folder.name}_raw128.npy"
+        np.save(out_raw, fmap)
+        raw_paths.append(out_raw)
+        print(f"Saved raw: {out_raw} shape={fmap.shape}")
 
-        try:
-            image_files = list((image_dir / uid).glob("*.czi"))
-            label_files = list((label_dir / uid).glob("*.czi"))
+    # Step 2: fit projector on all raw features
+    all_feats = []
+    for p in raw_paths:
+        arr = np.load(p)
+        H, W, C = arr.shape
+        all_feats.append(arr.reshape(-1, C))
+    X = np.vstack(all_feats)
+    print(f"Fitting projector on data shape {X.shape}")
+    projector = GaussianRandomProjection(
+        n_components=n_components,
+        random_state=random_state
+    )
+    projector.fit(X)
+    trans_path = models_dir / f"transformer_{n_components}.joblib"
+    dump(projector, trans_path)
+    print(f"Saved transformer: {trans_path}")
 
-            if len(image_files) != 1 or len(label_files) != 1:
-                # Remove the uuid directory if it has no valid files
-                out_dir.rmdir()
-                raise RuntimeError(f"{uid}: expected 1 image and 1 label, found {len(image_files)}, {len(label_files)}")
+    # Step 3: apply transformer per image
+    for p in raw_paths:
+        arr = np.load(p)
+        H, W, C = arr.shape
+        flat = arr.reshape(-1, C)
+        red = projector.transform(flat)
+        fmap50 = red.reshape(H, W, n_components)
+        out_red = red_dir / p.name.replace('_raw128', f'_feat{n_components}')
+        np.save(out_red, fmap50.astype(np.float32))
+        print(f"Saved reduced: {out_red} shape={fmap50.shape}")
 
-            image = load_czi(image_files[0])
-            label = load_czi(label_files[0], channel_index=config["channel_index"])
-
-            if not np.any(label != 0):
-                raise ValueError("Label array contains only zeros")
-
-            # ninja code: label > 1 makes a bool array
-            label[label > 1] = 1
-
-            features = extract_vgg_features(image, config["resize_to"])
-
-            if not config["dry_run"]:
-                np.save(feature_path, features)
-                np.save(label_path, label)
-
-            if config["verbosity"] > 0:
-                print(f"✅ Processed {uid} | Features: {features.shape} | Label: {label.shape}")
-
-        except RuntimeError as e:
-            print(f"❌ Error with {uid}: {e}")
-        except ValueError as e:
-            print(f"❌❌❌ Error with {uid}: {e}")
-
-    return config
-
-
-if __name__ == "__main__":
-    process_all()
-
+    print("Finished preparing training data.")

@@ -5,14 +5,14 @@ import joblib
 import matplotlib.pyplot as plt
 from pathlib import Path
 from training_package.load_czi_image_and_label import czi_to_numpy
-from training_package.extract_deep_features import extract_vgg_features
+from training_package.extract_deep_50 import extract_deep_features_50
 import argparse
 
 FEATURE_LIMIT = 2
 
-def predict_mask(image, clf, output_path, visualize=True, resize_to=(1570, 1572)):
+def predict_mask(image, clf, output_path, visualize=True, resize_to=(1024, 1024)):
     # Extract deep features
-    X_full = extract_vgg_features(image, resize_to=resize_to)
+    X_full = extract_deep_features_50(image, resize_to=resize_to)
 
     # Ensure feature dimension matches model expectations
     n_features = clf.n_features_in_
