@@ -11,6 +11,7 @@ from napari_pitcount_cfim.cellpose_analysis.cellpose_user import CellposeUser
 from napari_pitcount_cfim.config.settings_handler import SettingsHandler
 from napari_pitcount_cfim.image_handling.image_handler import ImageHandler
 from napari_pitcount_cfim.loggers import setup_python_logging, setup_thread_exception_hook, qt_message_logger
+from napari_pitcount_cfim.model_training.ml_user import MLUser
 from napari_pitcount_cfim.result_handling.result_handler import ResultHandler
 from napari_pitcount_cfim.segmentation_worker import SegmentationWorker
 
@@ -29,6 +30,7 @@ class MainWidget(QWidget):
         self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
+        self.model_user = MLUser(ml_settings=self.setting_handler.get_settings().get("ml_settings"))
 
         layout = QVBoxLayout()
         layout.setSizeConstraint(QLayout.SetFixedSize)
@@ -48,13 +50,19 @@ class MainWidget(QWidget):
         pane = QGroupBox(self)
         pane.setTitle("Analysis")
         pane.setLayout(QVBoxLayout())
-        self.analysis_button = QPushButton("Cellpose all images")
-        self.analysis_button.clicked.connect(self._run_analysis)
+
+        self.cellpose_button = QPushButton("Cellpose all images")
+        self.cellpose_button.clicked.connect(self._run_analysis)
+
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setMinimum(0)
 
-        pane.layout().addWidget(self.analysis_button)
+        self.ml_button = QPushButton("ML all images")
+        self.ml_button.clicked.connect(self._run_ml_analysis)
+
+        pane.layout().addWidget(self.cellpose_button)
         pane.layout().addWidget(self.progress_bar)
+        pane.layout().addWidget(self.ml_button)
 
         self.layout().addWidget(pane)
 
@@ -111,8 +119,8 @@ class MainWidget(QWidget):
         self.progress_bar.setFormat("%p%")
 
         # Turn off the analysis button
-        self.analysis_button.setEnabled(False)
-        self.analysis_button.setText(f"Analyzing {total} images...")
+        self.cellpose_button.setEnabled(False)
+        self.cellpose_button.setText(f"Analyzing {total} images...")
 
 
 
@@ -137,8 +145,8 @@ class MainWidget(QWidget):
             # If all images are processed, ensure progress bar reaches 100%
             if self._completed == total:
                 self.progress_bar.setValue(total)
-                self.analysis_button.setEnabled(True)
-                self.analysis_button.setText("Cellpose all images")
+                self.cellpose_button.setEnabled(True)
+                self.cellpose_button.setText("Cellpose all images")
 
         # Launch a worker thread for each image to run Cellpose in parallel
         for data in layers:
@@ -153,7 +161,15 @@ class MainWidget(QWidget):
             self._workers.append(worker)
             worker.start()
 
+    def _run_ml_analysis(self):
+        images = self.image_handler.get_all_images_with_names()
+        for name, image in images:
+            prediction = self.model_user.predict(image)
 
+            values, counts = np.unique(prediction, return_counts=True)
+            print(dict(zip(values, counts)))
+
+            self.image_handler.add_label(prediction, name=f"{name}_prediction")
 
     def _cleanup_worker(self, worker):
         if worker in self._workers:

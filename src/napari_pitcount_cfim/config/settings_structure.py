@@ -11,6 +11,10 @@ def get_default_input_folder() -> str:
     base = os.getenv('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local'))
     return os.path.join(base, "napari-pitcount-cfim", "input")
 
+def get_default_model_folder() -> str:
+    base = os.getenv('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local'))
+    return os.path.join(base, "napari-pitcount-cfim", "model")
+
 class DebugSettings(BaseModel):
     """
     Settings for debugging.
@@ -50,6 +54,13 @@ class CellposeSettings(BaseModel):
     # Attempted virtual fields
     debug: Optional[bool] = Field(default=None, exclude=True)
 
+class ModelSettings(BaseModel):
+    """
+    Settings for analysis model.
+    """
+    model: str = Field(default="modelv1", description="Model name.")
+    model_path: str = Field(default="model.pkl", description="Path to the model file. Only if model is set to 'custom'.")
+
 
 class CFIMSettings(BaseModel):
     """
@@ -57,12 +68,13 @@ class CFIMSettings(BaseModel):
 
         Update the version number here after a change.
     """
-    __version__: str = "0.7.6"
+    __version__: str = "0.8.0"
 
     version: str = Field(default=__version__)
     automation_settings: AutomationSettings = AutomationSettings()
     file_settings: FileSettings = FileSettings()
     cellpose_settings: CellposeSettings = CellposeSettings()
+    model_settings: ModelSettings = ModelSettings()
     debug_settings: DebugSettings = DebugSettings()
 
     def model_post_init(self, _context):
