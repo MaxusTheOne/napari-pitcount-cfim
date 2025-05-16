@@ -1,0 +1,10 @@
+{
+  "feature_source": "reduced",
+  "feature_limit": 128,
+  "n_estimators": 50,
+  "resize_to": [
+    1024,
+    1024
+  ],
+  "random_seed": 21
+}

@@ -1,5 +1,7 @@
 import json
+from os import mkdir
 from pprint import pprint
+from typing import Any
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
@@ -9,8 +11,9 @@ import joblib
 import random
 
 # --- CONFIGURATION ---
-CONFIG = {
-    "feature_limit": 2,             # Use only first N VGG features (e.g. 2/128) | None = all | Affects RAM
+CONFIG: dict[str, Any] = {
+    "feature_source": "reduced",
+    "feature_limit": 50,             # Use only first N VGG features (e.g. 2/128) | None = all | Affects RAM
     "max_images": 10,               # Use only first N image pairs (None = all) | Affects RAM
     "n_estimators": 50,             # Number of trees in Random Forest | Default: 50 | Affects RAM
     "max_depth": 20,                # Max depth of each tree (None = unlimited, but memory-heavy) | Default: 20 | Affects RAM
@@ -24,37 +27,70 @@ CONFIG = {
 # --- Paths ---
 PROCESSED_DIR = Path(__file__).parent / "training_data" / "processed"
 
-def get_uuid_split(train_ratio=2 / 3, out_dir=PROCESSED_DIR):
-    uuids = sorted([p.name for p in out_dir.iterdir() if (p / "features.npy").exists()])
+def get_uuids(processed_dir: Path, feature_source: str) -> list[str]:
+    """
+    List UUIDs based on feature files in processed_dir/feature_source.
+    """
+    src_dir = processed_dir / feature_source
+    files = list(src_dir.glob("*.npy"))
+    uuids = sorted({f.stem.split("_")[0] for f in files})
     random.seed(CONFIG["random_seed"])
     random.shuffle(uuids)
     if CONFIG["max_images"] is not None:
-        uuids = uuids[:CONFIG["max_images"]]
-    split_idx = int(len(uuids) * train_ratio)
-    return uuids[:split_idx], uuids[split_idx:]
+        uuids = uuids[: CONFIG["max_images"]]
+    return uuids
 
 
-def load_dataset(uuid_list, out_dir):
+def split_uuids(uuids: list[str], train_ratio: float = 2/3):
+    k = int(len(uuids) * train_ratio)
+    return uuids[:k], uuids[k:]
+
+
+def load_dataset(
+    uuids: list[str], processed_dir: Path, feature_source: str
+):
+    """
+    Load feature and mask arrays for given UUIDs.
+    """
     X_list, y_list = [], []
-    for uid in uuid_list:
-        pair_path = out_dir / uid
-        X = np.load(pair_path / "features.npy")
-        y = np.load(pair_path / "label.npy")
+    feat_dir = processed_dir / feature_source
+    mask_dir = processed_dir / 'masks'
 
-        if CONFIG["feature_limit"]:
+    for uid in uuids:
+        # Feature file
+        feat_files = list(feat_dir.glob(f"{uid}_*.npy"))
+        if len(feat_files) != 1:
+            print(f"⚠️ Skipping {uid}: found {len(feat_files)} feature files in {feat_dir}")
+            continue
+        feat_path = feat_files[0]
+        X = np.load(feat_path)
+
+        # Mask file
+        mask_path = mask_dir / f"{uid}_mask.npy"
+        if not mask_path.exists():
+            print(f"⚠️ Skipping {uid}: mask not found at {mask_path}")
+            continue
+        y = np.load(mask_path)
+
+        # Feature limit
+        if CONFIG["feature_limit"] is not None and X.ndim == 3:
             X = X[..., :CONFIG["feature_limit"]]
 
+        # Flatten
         X_flat = X.reshape(-1, X.shape[-1])
         y_flat = y.flatten()
 
         if X_flat.shape[0] != y_flat.shape[0]:
-            print(f"⚠️ Skipping {uid}: feature/label size mismatch ({X_flat.shape[0]} vs {y_flat.shape[0]})")
+            print(f"⚠️ Skipping {uid}: size mismatch {X_flat.shape[0]} vs {y_flat.shape[0]}")
             continue
 
-        X_list.append(X.reshape(-1, X.shape[-1]))  # (H*W, F)
-        y_list.append(y.flatten())  # (H*W,)
+        X_list.append(X_flat)
+        y_list.append(y_flat)
 
-    return np.concatenate(X_list), np.concatenate(y_list)
+    if not X_list:
+        return np.empty((0,0)), np.empty((0,))
+    return np.vstack(X_list), np.concatenate(y_list)
+
 
 
 def train_rf_classifier(X_train, y_train):
@@ -85,60 +121,56 @@ def train_model(config: dict = None):
     # Override module CONFIG if custom settings provided
     if config:
         CONFIG.update({
-            "feature_limit": config.get("feature_limit", CONFIG.get("feature_limit")),
+            "feature_limit": 128,
             "max_images": config.get("max_images", CONFIG.get("max_images")),
-            "n_estimators": config.get("n_estimators", CONFIG.get("n_estimators")),
+            "n_estimators": config.get("n_components", CONFIG.get("n_estimators")),
             "max_depth": config.get("max_depth", CONFIG.get("max_depth")),
             "n_jobs": config.get("n_jobs", CONFIG.get("n_jobs")),
             # 'verbosity' key maps to 'verbosity'
             "verbosity": config.get("verbosity", CONFIG.get("verbosity")),
             "random_seed": config.get("random_seed", CONFIG.get("random_seed")),
             "model_name": config.get("model_name", CONFIG.get("model_name")),
-            "out_dir": config.get("output_dir", PROCESSED_DIR)
+            "out_dir": config.get("output_dir", PROCESSED_DIR),
+            "models_dir": config.get("models_dir", Path(__file__).parent / "models"),
+            "feature_source": config.get("feature_source", "reduced"),
 
         })
-    model_dir = Path(config.get("model_dir", Path(__file__).parent / "models"))
-    model_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = CONFIG["out_dir"]
+    feature_source = CONFIG["feature_source"]
+
+    models_dir = CONFIG["models_dir"]
+    model_folder = config.get("model_folder", models_dir / CONFIG["model_name"])
+    model_folder.mkdir(parents=True, exist_ok=True)
     if config.get("verbosity") > 1:
         print(f"CONFIG:")
         pprint(CONFIG)
-    train_uuids, test_uuids = get_uuid_split(out_dir=CONFIG.get("out_dir", PROCESSED_DIR))
+    uuids = get_uuids(output_dir, feature_source)
+    train_ids, test_ids = split_uuids(uuids)
 
-    if config["random_seed"] is None:
-        random.seed()
-        config["random_seed"] = random.randint(1, 10000)
+    if CONFIG["verbosity"]:
+        print(f"📂 Using '{feature_source}' features from {output_dir / feature_source}")
+        print(f"🎲 Training on {len(train_ids)}, testing on {len(test_ids)} samples")
 
-    if CONFIG["verbosity"] == 1:
-        print(f"🔍 Training with {len(train_uuids)} image-label pairs")
-        print(f"🔍 Feature limit: {CONFIG['feature_limit']}")
-        print(f"🔍 Max images: {CONFIG['max_images']}")
-        print(f"🔍 Random seed: {CONFIG['random_seed']}")
+    X_train, y_train = load_dataset(train_ids, output_dir, feature_source)
+    X_test, y_test = load_dataset(test_ids, output_dir, feature_source)
 
-
-    X_train, y_train = load_dataset(train_uuids, CONFIG["out_dir"])
-    X_test, y_test = load_dataset(test_uuids, CONFIG["out_dir"])
-
-    if config["verbosity"] > 0:
-        print(f"🔍 Loaded {len(train_uuids)} training and {len(test_uuids)} test samples")
-        print(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
+    if CONFIG["verbosity"]:
+        print(f"✅ Loaded train shape {X_train.shape}, test shape {X_test.shape}")
 
 
     clf = train_rf_classifier(X_train, y_train)
     evaluate_model(clf, X_test, y_test)
 
-    joblib.dump(clf, model_dir / (CONFIG["model_name"] + ".joblib"))
-
-    meta = {
-        "resize_to": config["resize_to"],
-        "feature_limit": config["feature_limit"],
-        "model_name": config["model_name"]
-    }
-    with open(model_dir / (CONFIG.get("model_name", "")+'metadata.json'), "w") as f:
+    # Save model and metadata
+    model_path = model_folder / (CONFIG["model_name"] + ".joblib")
+    joblib.dump(clf, model_path)
+    meta = {k: CONFIG[k] for k in ["feature_source", "feature_limit", "n_estimators", "n_components", "max_depth", "random_seed", "size_to"]}
+    with open(model_folder / (CONFIG["model_name"] + "_metadata.json"), 'w') as f:
         json.dump(meta, f, indent=2)
 
-    if CONFIG["verbosity"] > 0:
-        print(f'✅ Model trained and saved to {model_dir} / {CONFIG["model_name"]}')
-    print(f"✅ Metadata → {model_dir / (CONFIG.get("model_name", "")+'metadata.json')}")
+    if CONFIG["verbosity"]:
+        print(f"✅ Model saved to {model_path}")
+        print(f"✅ Metadata saved to {model_folder}")
 
 def _plot_prediction(image, label_mask, pred_mask):
     import matplotlib.pyplot as plt

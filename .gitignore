@@ -5,6 +5,8 @@ training_data/
 training_data/*
 *.joblib
 model-training-pack/output
+model-training-pack/training_package/test_data
+model-training-pack/training_package/models/*
 
 # Pycharm and VSCode
 .idea/

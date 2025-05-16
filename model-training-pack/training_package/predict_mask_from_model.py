@@ -1,132 +1,141 @@
-import json
+#!/usr/bin/env python3
+"""
+visualize_predictions.py
 
-import numpy as np
-import joblib
-import matplotlib.pyplot as plt
-from pathlib import Path
-from training_package.load_czi_image_and_label import czi_to_numpy
-from training_package.extract_deep_50 import extract_deep_features_50
+Load .czi (or image) files, use a trained model and transformer to predict binary masks,
+and display overlays of image+prediction for each.
+
+Usage:
+    python visualize_predictions.py \
+        --images-dir /path/to/Images \
+        --model-dir  /path/to/model_folder
+
+Where `model_dir` contains:
+  - A classifier `.joblib` (e.g. `rf_model.joblib`)
+  - A transformer `.joblib` (e.g. `transformer_50.joblib`)
+  - Optionally, `<model_name>_metadata.json`
+
+Visualizes each image with predicted mask overlay.
+"""
 import argparse
+from pathlib import Path
+import numpy as np
+import czifile
+import cv2
+import torch
+import torch.nn.functional as F
+import torchvision.transforms as T
+from torchvision.models import vgg19, VGG19_Weights
+from joblib import load
+import matplotlib.pyplot as plt
 
-FEATURE_LIMIT = 2
+# --- Prepare VGG up to conv2_2 ---
+vgg_conv2_2 = vgg19(weights=VGG19_Weights.DEFAULT).features[:9]
+vgg_conv2_2.eval()
+_VGG_TRANSFORM = T.Compose([
+    T.ToTensor(),
+    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
-def predict_mask(image, clf, output_path, visualize=True, resize_to=(1024, 1024)):
-    # Extract deep features
-    X_full = extract_deep_features_50(image, resize_to=resize_to)
 
-    # Ensure feature dimension matches model expectations
-    n_features = clf.n_features_in_
-    if X_full.shape[2] < n_features:
-        raise ValueError(f"Model expects {n_features} features but input has {X_full.shape[2]}")
-    if X_full.shape[2] > n_features:
-        # truncate excess features
-        X_full = X_full[..., :n_features]
-    H, W, C = X_full.shape
-    X = X_full.reshape(-1, C)
+def czi_to_fmap(czi_path: Path, vgg_input_size=(256,256)) -> np.ndarray:
+    """
+    Load .czi or image, convert to grayscale, extract raw conv2_2 features
+    and upsample to original resolution. Returns H×W×128 array.
+    """
+    arr = czifile.imread(str(czi_path)) if czi_path.suffix.lower() == '.czi' else cv2.imread(
+        str(czi_path), cv2.IMREAD_UNCHANGED)
+    arr = np.squeeze(arr)
+    # to 2D grayscale
+    if arr.ndim == 2:
+        gray = arr.astype(np.float32)
+    elif arr.ndim == 3:
+        # (C,H,W) -> (H,W,C)
+        if arr.shape[0] in (1,3,4) and arr.shape[-1] not in (1,3,4):
+            arr = arr.transpose(1,2,0)
+        chans = arr.shape[-1]
+        if chans >= 3:
+            rgb = arr[..., :3].astype(np.float32)
+            if rgb.max()>0: rgb = rgb / rgb.max()*255
+            gray = cv2.cvtColor(rgb.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        else:
+            gray = arr[...,0].astype(np.float32)
+    else:
+        raise ValueError(f"Cannot interpret image with shape {arr.shape}")
+    # normalize
+    gray = gray.astype(np.float32)
+    if gray.max()>gray.min(): gray = (gray - gray.min())/(gray.max()-gray.min())
+    gray = (gray*255).astype(np.uint8)
+    H0,W0 = gray.shape
+    # resize for VGG
+    resized = cv2.resize(gray, dsize=(vgg_input_size[1], vgg_input_size[0]), interpolation=cv2.INTER_LINEAR)
+    rgb = cv2.cvtColor(resized, cv2.COLOR_GRAY2RGB)
+    # forward conv2_2
+    x = _VGG_TRANSFORM(rgb).unsqueeze(0)
+    with torch.no_grad():
+        feats = vgg_conv2_2(x)
+        feats = F.interpolate(feats, size=vgg_input_size, mode='bilinear', align_corners=False)
+    fmap = feats.squeeze(0).permute(1,2,0).cpu().numpy()
+    # upsample to original
+    if (vgg_input_size[0], vgg_input_size[1]) != (H0,W0):
+        fmap = cv2.resize(fmap, (W0,H0), interpolation=cv2.INTER_LINEAR)
+        fmap = fmap.reshape(H0,W0,-1)
+    return fmap.astype(np.float32)
 
-    # Predict
-    y_pred = clf.predict(X)
 
-    # Reshape prediction back to image shape
-    mask = y_pred.reshape(H, W).astype(np.uint8)
-    values, counts = np.unique(mask, return_counts=True)
-    print(dict(zip(values, counts)))
-    # Display
-    if visualize:
-        # Display original image and overlay of predicted mask
-        fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-        ax1, ax2 = axes
-        # Original image
-        ax1.imshow(image, cmap='gray')
-        ax1.set_title("Original Image")
-        ax1.axis('off')
-        # Overlay mask on image
-        overlay = np.ma.masked_where(mask == 0, mask)
-        ax2.imshow(image, cmap='gray')
-        ax2.imshow(overlay, cmap='Reds_r', alpha=1)
-        ax2.set_title("Image with Predicted Mask Overlay")
-        ax2.axis('off')
-        plt.tight_layout()
+def overlay_mask(image: np.ndarray, mask: np.ndarray, color=(1,0,0), alpha=0.5) -> np.ndarray:
+    # image: H×W float [0,1], mask: H×W binary
+    H,W = image.shape
+    base = np.stack([image]*3, -1)
+    overlay = base.copy()
+    for c in range(3): overlay[...,c][mask==1] = color[c]
+    return overlay*alpha + base*(1-alpha)
+
+
+def main(images_dir: str, model_dir: str, vgg_input_size=(256,256)):
+    images_dir = Path(images_dir)
+    model_dir = Path(model_dir)
+    # load classifier
+    cls_paths = list(model_dir.glob('*.joblib'))
+    transformer_path = model_dir / ''
+    model_path = None
+    transformer = None
+    for p in cls_paths:
+        if 'transformer' in p.stem:
+            transformer_path = p
+        else:
+            model_path = p
+    if not model_path or not transformer_path:
+        raise FileNotFoundError("Need both a model.joblib and transformer_*.joblib in model_dir")
+    model = load(model_path)
+    transformer = load(transformer_path)
+    # process images
+    for img_file in images_dir.rglob('*.czi'):
+        uid = img_file.stem
+        # 1) get fmap
+        fmap = czi_to_fmap(img_file, vgg_input_size)
+        H,W,_ = fmap.shape
+        # 2) flatten & transform
+        flat = fmap.reshape(-1, fmap.shape[-1])
+        feat50 = transformer.transform(flat)
+        # 3) predict and reshape
+        pred_flat = model.predict(feat50)
+        pred_map = pred_flat.reshape(H, W)
+        # normalize image for display
+        img_gray = cv2.cvtColor(cv2.resize(fmap[:,:,0], (W,H)), cv2.COLOR_GRAY2BGR) # or reload original
+        # create overlay
+        img_disp = overlay_mask((img_gray[...,0]/255), pred_map)
+        # show
+        plt.figure(figsize=(4,4))
+        plt.title(f"{uid} - Prediction")
+        plt.imshow(img_disp)
+        plt.axis('off')
         plt.show()
 
-    save_mask(mask, output_path)
-
-
-def save_mask(mask, output_path):
-    # Optionally save
-    from imageio import imwrite
-    imwrite(output_path, mask * 255)
-    print(f"✅ Mask saved to {output_path}")
-
-def main():
-    parser = argparse.ArgumentParser(description="Predict pit masks from a trained RF model.")
-    parser.add_argument(
-        "--czi", "-i",
-        type=Path,
-        required=True,
-        help="Path to the .czi image you want to run. \n If a directory is given, it will process all .czi files in it."
-    )
-    parser.add_argument(
-        "--model", "-m",
-        type=Path,
-        default=Path.cwd() / "models",
-        help="Path to the dir of the trained .joblib model."
-    )
-    parser.add_argument(
-        "--model-name", "-mn",
-        type=str,
-        default="rf_model",
-        help="Name of the trained model file (without extension)."
-    )
-    parser.add_argument(
-        "--output", "-o",
-        type=Path,
-        default=Path.cwd() / "predicted_mask.png",
-        help="Where to save the output mask PNG."
-    )
-    parser.add_argument(
-        "--no-viz",
-        action="store_true",
-        help="Skip visualization."
-    )
+if __name__=='__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--images-dir',"-id", required=True)
+    parser.add_argument('--model-dir', "-md", required=True)
+    parser.add_argument('--vgg-input-size', "-is", nargs=2, type=int, default=[1024,1024])
     args = parser.parse_args()
-
-    model_dir = args.model
-    model_name = args.model_name
-    model_file = model_dir / (model_name + ".joblib")
-    print(f"Loading meta from {model_dir / (model_name + 'metadata.json')}")
-    with open(model_dir / (model_name + "metadata.json")) as f:
-        meta = json.load(f)
-        print(f"Meta: {meta}")
-
-    clf = joblib.load(model_file)
-
-    if args.czi.is_dir():
-        czi_paths = sorted(args.czi.glob("*.czi"))
-    else:
-        czi_paths = [args.czi]
-
-        # Process each file
-    for czi_path in czi_paths:
-        print(f"Processing {czi_path}")
-        image = czi_to_numpy(czi_path)
-        # Determine output path
-        if args.czi.is_dir():
-            out_dir = args.output
-            out_dir.mkdir(parents=True, exist_ok=True)
-            output_path = out_dir / (czi_path.stem + "_mask.png")
-        else:
-            output_path = args.output
-
-        predict_mask(
-            image,
-            clf,
-            output_path,
-            visualize=not args.no_viz,
-            resize_to=tuple(meta["resize_to"])
-        )
-
-    return
-
-if __name__ == "__main__":
-    main()
+    main(args.images_dir, args.model_dir, tuple(args.vgg_input_size))

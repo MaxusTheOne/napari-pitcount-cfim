@@ -11,10 +11,9 @@ logging.basicConfig(
 import numpy as np
 from joblib import load
 from imageio import imread
-from training_package.extract_deep_50 import extract_deep_features_50
 import cv2
 import json
-
+from training_package.czi_transformer import czi_to_fmap
 try:
     import czifile  # for reading .czi image files
 except ImportError:
@@ -29,15 +28,18 @@ except ImportError:
 
 # For simplicity, using fixed paths (could be replaced by args as shown above):
 DIR_PATH = Path(__file__).parent  # Directory of this script
-MODEL_PATH = DIR_PATH / "models" / "rf_model_50" / "rf_model_50.joblib"
+Model_FOLDER_PATH = DIR_PATH / "models" / "rf_model_50_2"
+MODEL_PATH = Model_FOLDER_PATH / "rf_model_50.joblib"
 IMAGES_DIR = DIR_PATH / "test_data" / "Images"
 LABELS_DIR = DIR_PATH / "test_data" / "Labels"
-TRANSFORMER_PATH = MODEL_PATH / "transformer.json"
+TRANSFORMER_PATH = Model_FOLDER_PATH / "transformer_50.joblib"
 
 # Load the trained classification model (e.g., RandomForest, SVM, etc. saved via joblib)
 model = load(MODEL_PATH)
 logging.info(f"Loaded model from {MODEL_PATH}")
 
+# Load the transformer
+transformer = load(TRANSFORMER_PATH)
 
 # Metrics accumulators
 ious = []    # list of IoU for each image
@@ -65,74 +67,21 @@ for filename in os.listdir(IMAGES_DIR):
         continue
 
     # Load image using czifile (for .czi) or other methods for other formats
-    if image_path.lower().endswith(".czi"):
-        img_array = czifile.imread(image_path)                # read the .czi file:contentReference[oaicite:10]{index=10}
-    else:
-        # For non-CZI images, use OpenCV or PIL as needed (assuming grayscale or RGB image)
-        # For example, using OpenCV:
-        # import cv2
-        # img_array = cv2.imread(image_path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
-        # Here we'll use imageio or skimage if needed:
-        from imageio import imread
-        img_array = imread(image_path)
-    # Squeeze singleton dimensions (czifile often returns shape like (1,1,C,H,W,1))
-    img_array = np.squeeze(img_array)
-    if img_array.ndim == 2:
-        # Already a single-channel image
-        gray = img_array.astype(np.float32)
-        if gray.max() > 1.0:
-            gray /= gray.max()
-        gray = (gray * 255).astype(np.uint8)
-    elif img_array.ndim == 3:
-        # If the image has a channel dimension
-        if img_array.shape[0] <= 3 and img_array.shape[2] != 3:
-            # Image in (C,H,W) format – transpose to (H,W,C)
-            img_array = img_array.transpose(1, 2, 0)
-        channels = img_array.shape[-1]
-        if channels == 3:
-            # Color image (RGB)
-            img_float = img_array.astype(np.float32)
-            if img_float.max() > 1.0:
-                img_float /= img_float.max()
-            gray = cv2.cvtColor((img_float * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
-        elif channels == 4:
-            # RGBA image – drop alpha channel
-            img_float = img_array[..., :3].astype(np.float32)
-            if img_float.max() > 1.0:
-                img_float /= img_float.max()
-            gray = cv2.cvtColor((img_float * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
-        elif channels == 1:
-            # Single-channel image stored as (H,W,1)
-            gray = img_array[:, :, 0].astype(np.float32)
-            if gray.max() > 1.0:
-                gray /= gray.max()
-            gray = (gray * 255).astype(np.uint8)
-        else:
-            # Unexpected number of channels; use first channel as a fallback
-            logging.warning(f"{filename}: Unexpected channels ({channels}). Using first channel for grayscale.")
-            first_chan = img_array[..., 0].astype(np.float32)
-            if first_chan.max() > 1.0:
-                first_chan /= first_chan.max()
-            gray = (first_chan * 255).astype(np.uint8)
-    else:
-        logging.error(f"Skipping {filename}: could not interpret image dimensions {img_array.shape}")
-        continue
+    feat_map, image_npy = czi_to_fmap(czi_path=image_path, vgg_input_size=RESIZE_TO)
 
-    # Extract H×W×50 feature map and flatten to (H*W,50)
-    feat_map = extract_deep_features_50(gray, RESIZE_TO)
     H, W, _ = feat_map.shape
-    feature_vectors = feat_map.reshape(-1, feat_map.shape[-1])
+    flat = feat_map.reshape(-1, 128)
+    transform_flat = transformer.transform(flat)
 
     # Predict
-    # Predict using the trained model
-    pred_flat = model.predict(feature_vectors)  # shape: (H*W,)
+    pred_flat = model.predict(transform_flat)  # shape: (H*W,)
     pred_map = pred_flat.reshape(H, W)  # reshape to 2D prediction map
 
     # Upsample prediction to original size if needed (here, H,W already match original image)
-    if (H, W) != (img_array.shape[0], img_array.shape[1]):
+    if (H, W) != (image_npy.shape[0], image_npy.shape[1]):
         # If feature map is smaller, resize the prediction mask to the input image size
         pred_mask = cv2.resize(pred_map.astype(np.uint8),
-                               (img_array.shape[1], img_array.shape[0]),
+                               (image_npy.shape[1], image_npy.shape[0]),
                                interpolation=cv2.INTER_NEAREST)
     else:
         pred_mask = pred_map.astype(np.uint8)
