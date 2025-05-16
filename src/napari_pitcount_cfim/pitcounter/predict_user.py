@@ -5,7 +5,7 @@ import joblib
 
 from pathlib import Path
 
-from training_package.transformers import czi_to_fmap, npy_to_fmap
+from napari_pitcount_cfim.pitcounter.transformers import czi_to_fmap, npy_to_fmap
 
 
 class ModelUser:
@@ -29,7 +29,6 @@ class ModelUser:
         if resize_to is None:
             resize_to = self.resize_to
         feat_map = npy_to_fmap(image_array, size=resize_to)
-        print(f"I scream")
         mask = self.predict_mask(feat_map)
         return mask
 

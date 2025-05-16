@@ -11,7 +11,7 @@ from napari_pitcount_cfim.cellpose_analysis.cellpose_user import CellposeUser
 from napari_pitcount_cfim.config.settings_handler import SettingsHandler
 from napari_pitcount_cfim.image_handling.image_handler import ImageHandler
 from napari_pitcount_cfim.loggers import setup_python_logging, setup_thread_exception_hook, qt_message_logger
-from napari_pitcount_cfim.model_training.ml_user import MLUser
+from napari_pitcount_cfim.pitcounter.predict_user import ModelUser
 from napari_pitcount_cfim.result_handling.result_handler import ResultHandler
 from napari_pitcount_cfim.segmentation_worker import SegmentationWorker
 
@@ -30,7 +30,7 @@ class MainWidget(QWidget):
         self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
-        self.model_user = MLUser(ml_settings=self.setting_handler.get_settings().get("ml_settings"))
+        self.model_user: ModelUser = ModelUser(model_dir=pathlib.Path(__file__).parent / "pitcounter" / "models" / "rf_model_50_2" / "rf_model_50.joblib")
 
         layout = QVBoxLayout()
         layout.setSizeConstraint(QLayout.SetFixedSize)
@@ -164,7 +164,8 @@ class MainWidget(QWidget):
     def _run_ml_analysis(self):
         images = self.image_handler.get_all_images_with_names()
         for name, image in images:
-            prediction = self.model_user.predict(image)
+            print(f"Dev | Image type: {type(image)}")
+            prediction = self.model_user.predict_from_npy(image)
 
             values, counts = np.unique(prediction, return_counts=True)
             print(dict(zip(values, counts)))

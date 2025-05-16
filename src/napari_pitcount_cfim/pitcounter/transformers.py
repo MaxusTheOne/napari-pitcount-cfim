@@ -86,26 +86,26 @@ def czi_to_fmap(
     return fmap.astype(np.float32), arr
 
 def npy_to_fmap(
-    npy_path: Path | str,
+    npy_image: np.ndarray,
     size: tuple[int,int] = None
 ) -> np.ndarray:
     """
     Load a .npy microscopy image and return its raw VGG conv2_2 feature map.
 
     Args:
-      npy_path: Path to your .npy file.
-      vgg_input_size: (height, width) to resize for VGG before extracting features.
+      npy_image: npy array.
+      size: (height, width) to resize for VGG before extracting features.
 
     Returns:
       fmap: numpy array of shape (H, W, 128), where H/W are the original image dims.
     """
-    if vgg_input_size is None:
-        print(f"Got None for vgg_input_size, using default (256, 256)")
-        vgg_input_size = (256, 256)
+    if size is None:
+        print(f"Got None for size, using default (256, 256)")
+        size = (256, 256)
 
     # --- 1. Load & squeeze to 2D or 3D array ---
-    arr = np.load(str(npy_path))
-    arr = np.squeeze(arr)  # e.g. (1,1,C,H,W,1) → (C,H,W) or (H,W,C) or (H,W)
+    arr = npy_image
+    arr = np.squeeze(arr)
 
     # --- 2. Convert to single‐channel grayscale uint8 ---
     if arr.ndim == 2:
@@ -126,7 +126,7 @@ def npy_to_fmap(
             # single‐channel fallback
             gray = arr[...,0]
     else:
-        raise ValueError(f"Unexpected arr.ndim={arr.ndim} for {npy_path}")
+        raise ValueError(f"Unexpected arr.ndim={arr.ndim} for {npy_image}")
 
     # ensure uint8 in [0,255]
     gray = gray.astype(np.float32)
@@ -137,21 +137,21 @@ def npy_to_fmap(
     H0, W0 = gray.shape
 
     # --- 3. Resize for VGG19 input ---
-    resized = cv2.resize(gray, dsize=vgg_input_size[::-1], interpolation=cv2.INTER_LINEAR)
+    resized = cv2.resize(gray, dsize=size[::-1], interpolation=cv2.INTER_LINEAR)
     rgb = cv2.cvtColor(resized, cv2.COLOR_GRAY2RGB)
 
     # --- 4. Extract conv2_2 features and upsample back ---
     x = _VGG_TRANSFORM(rgb).unsqueeze(0)            # 1×3×h×w
     with torch.no_grad():
         feats = _vgg_conv2_2(x)                     # 1×128×h'×w'
-        feats = F.interpolate(feats, size=vgg_input_size,
+        feats = F.interpolate(feats, size=size,
                                mode='bilinear',
                                align_corners=False)
     fmap = feats.squeeze(0).permute(1,2,0).cpu().numpy()  # h×w×128
 
     # --- 5. Upsample feature‐map to original image size if needed ---
-    if vgg_input_size != (H0, W0):
+    if size != (H0, W0):
         fmap = cv2.resize(fmap, (W0, H0), interpolation=cv2.INTER_LINEAR)
         fmap = fmap.reshape(H0, W0, -1)
 
-    return fmap.astype(np.float32), arr
+    return fmap.astype(np.float32)
