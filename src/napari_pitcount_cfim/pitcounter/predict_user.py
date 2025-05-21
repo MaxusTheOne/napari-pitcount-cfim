@@ -18,7 +18,7 @@ class ModelUser:
         self.transformer = joblib.load(self.transformer_file)
 
         if not meta_path:
-            meta_path = self.model_file_dir / (self.model_name + "_metadata.json")
+            meta_path = self.model_file_dir / "metadata.json"
         with open(meta_path) as f:
             self.meta = json.load(f)
             print(f"Meta: {self.meta}")

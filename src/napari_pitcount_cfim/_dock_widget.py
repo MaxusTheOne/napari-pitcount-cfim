@@ -30,7 +30,7 @@ class MainWidget(QWidget):
         self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
-        self.model_user: ModelUser = ModelUser(model_dir=pathlib.Path(__file__).parent / "pitcounter" / "models" / "rf_model_50_2" / "rf_model_50.joblib")
+        self.model_user: ModelUser = ModelUser(model_dir=pathlib.Path(__file__).parent / "pitcounter" / "models" / "img256_nc10_ne10_md10_fl20_20250521_134748"/"img256_nc10_ne10_md10_fl20_20250521_134748.joblib")
 
         layout = QVBoxLayout()
         layout.setSizeConstraint(QLayout.SetFixedSize)
