@@ -1,0 +1,9 @@
+{
+  "feature_source": "reduced",
+  "feature_limit": 0.3,
+  "n_estimators": 64,
+  "resize_to": [
+    512,
+    512
+  ]
+}
