@@ -30,7 +30,7 @@ class MainWidget(QWidget):
         self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
-        self.model_user: ModelUser = ModelUser(model_dir=pathlib.Path(__file__).parent / "pitcounter" / "models" / "img256_nc10_ne10_md10_fl20_20250521_134748"/"img256_nc10_ne10_md10_fl20_20250521_134748.joblib")
+        self.model_user: ModelUser = ModelUser(model_dir=pathlib.Path(__file__).parent / "pitcounter" / "models" / "ne64_md20_fl0.3"/"img512_nc10_ne64_md20_fl0.3_20250523_073533.joblib")
 
         layout = QVBoxLayout()
         layout.setSizeConstraint(QLayout.SetFixedSize)
@@ -163,6 +163,15 @@ class MainWidget(QWidget):
 
     def _run_ml_analysis(self):
         images = self.image_handler.get_all_images_with_names()
+
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(len(images))
+        self.progress_bar.setValue(0)
+
+        self.ml_button.setEnabled(False)
+
+        completed = 0
+
         for name, image in images:
             print(f"Dev | Image type: {type(image)}")
             prediction = self.model_user.predict_from_npy(image)
@@ -170,7 +179,11 @@ class MainWidget(QWidget):
             values, counts = np.unique(prediction, return_counts=True)
             print(dict(zip(values, counts)))
 
+            completed += 1
+            self.progress_bar.setValue(completed)
             self.image_handler.add_label(prediction, name=f"{name}_prediction")
+
+        self.ml_button.setEnabled(True)
 
     def _cleanup_worker(self, worker):
         if worker in self._workers:

@@ -56,15 +56,19 @@ class ImageHandler(QWidget):
             name = f"Image {len(self.viewer.layers)}"
         self.viewer.add_image(image, name=name)
 
-    def add_label(self, label, name=None):
+    def add_label(self, label, name=None, scale=None):
         """
             Add a label to the napari viewer.
         """
+
         if not isinstance(label, np.ndarray):
             raise TypeError("Label must be a numpy array.")
+        if scale is None:
+            scale = self.get_scale(0)
+            print(f"Dev | set scale to {scale}")
         if name is None:
             name = f"Label {len(self.viewer.layers)}"
-        self.viewer.add_labels(label, name=name)
+        self.viewer.add_labels(label, name=name, scale=scale, blending="additive")
 
     def init_load_button_ui(self):
         """
