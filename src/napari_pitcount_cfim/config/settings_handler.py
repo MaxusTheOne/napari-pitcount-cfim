@@ -66,7 +66,7 @@ class SettingsHandler(QWidget):
 
     def get_updated_settings(self):
         """
-            Returns the updated settings
+            Updates and returns the settings as a dictionary.
         """
         self._load_settings()
         return self.settings.as_dict_with_virtuals()
@@ -78,7 +78,7 @@ class SettingsHandler(QWidget):
 
         return self.settings.as_dict_with_virtuals()
 
-    def update_setting(self, path: str, value):
+    def update_settings(self, path: str, value):
         parts = path.split(".")
         obj = self.settings
         for part in parts[:-1]:

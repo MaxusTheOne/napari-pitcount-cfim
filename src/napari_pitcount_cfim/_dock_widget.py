@@ -1,4 +1,4 @@
-import pathlib
+from pathlib import Path
 from tkinter.messagebox import showinfo
 from typing import List
 
@@ -15,6 +15,9 @@ from napari_pitcount_cfim.pitcounter.predict_user import ModelUser
 from napari_pitcount_cfim.result_handling.result_handler import ResultHandler
 from napari_pitcount_cfim.segmentation_worker import SegmentationWorker
 
+# Default values
+DEFAULT_MODEL = "ne64_md20_fl0.3"
+
 
 class MainWidget(QWidget):
     def __init__(self, napari_viewer, parent=None):
@@ -30,7 +33,7 @@ class MainWidget(QWidget):
         self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
-        self.model_user: ModelUser = ModelUser(model_dir=pathlib.Path(__file__).parent / "pitcounter" / "models" / "ne64_md20_fl0.3"/"img512_nc10_ne64_md20_fl0.3_20250523_073533.joblib")
+        self.model_user: ModelUser | None = None
 
         layout = QVBoxLayout()
         layout.setSizeConstraint(QLayout.SetFixedSize)
@@ -86,7 +89,7 @@ class MainWidget(QWidget):
         """
         Add the logo to the widget.
         """
-        path = pathlib.Path(__file__).parent / "logo" / "CFIM_logo_small.png"
+        path = Path(__file__).parent / "logo" / "CFIM_logo_small.png"
         logo_label = QLabel()
         logo_label.setText(f"<img src='{path}' width='320'/>")
         self.layout().addWidget(logo_label)
@@ -138,7 +141,7 @@ class MainWidget(QWidget):
         def _on_segmentation_result(mask, image_name):
             """Receive segmentation result from a worker and update the viewer/UI."""
             # Add the segmentation mask as a labels layer (only mask is added, no flows)
-            self.viewer.add_labels(mask, name=f"{image_name}_mask", scale=scale)
+            self.image_handler.add_label(mask, name=f"{image_name}_mask", scale=scale, metadata={"cfim_type": "segmentation"})
             # Update progress
             self._completed += 1
             self.progress_bar.setValue(self._completed)
@@ -162,7 +165,21 @@ class MainWidget(QWidget):
             worker.start()
 
     def _run_ml_analysis(self):
-        images = self.image_handler.get_all_images_with_names()
+        settings = self.setting_handler.get_updated_settings().get("model_settings")
+        if settings["model_folder"] == "none" or not Path(settings["model_folder"]).exists():
+            print("No model folder set, attempting to load default model.")
+            settings["model_folder"] = Path(__file__).parent / "pitcounter" / "models" / DEFAULT_MODEL
+            model_folder = settings["model_folder"]
+
+            if not model_folder.exists():
+                print(f"Getting default model at {model_folder} failed, exiting pit counting.")
+                return
+            self.setting_handler.update_settings("model_settings.model_folder", str(model_folder))
+
+        self.model_user = ModelUser(model_folder=settings["model_folder"], prediction_settings=settings)
+
+
+        images = self.image_handler.get_all_images_props(["data", "name", "uuid"])
 
         self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(len(images))
@@ -172,16 +189,18 @@ class MainWidget(QWidget):
 
         completed = 0
 
-        for name, image in images:
-            print(f"Dev | Image type: {type(image)}")
-            prediction = self.model_user.predict_from_npy(image)
+        for image in images:
+            data = image["data"]
+            name = image["name"]
+            unique_id = image["unique_id"]
+            prediction = self.model_user.predict_from_npy(data)
 
             values, counts = np.unique(prediction, return_counts=True)
             print(dict(zip(values, counts)))
 
             completed += 1
             self.progress_bar.setValue(completed)
-            self.image_handler.add_label(prediction, name=f"{name}_prediction")
+            self.image_handler.add_label(prediction, name=f"{name}_prediction", metadata={"cfim_type": "prediction", "image_input_id": unique_id})
 
         self.ml_button.setEnabled(True)
 
