@@ -4,6 +4,12 @@ import napari.layers
 import numpy as np
 from qtpy.QtWidgets import QWidget, QPushButton, QFileDialog
 
+# Default values
+ACCEPTABLE_SYNONYMS = {
+    "uuid": "unique_id",
+    "meta": "metadata",
+
+}
 
 class ImageHandler(QWidget):
     """
@@ -38,6 +44,26 @@ class ImageHandler(QWidget):
             raise ValueError("No layers in the viewer.")
         return [(layer.name, layer.data) for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
 
+    def get_all_images_props(self, props=None):
+        """
+            Get all images from the napari viewer with their properties.
+        """
+        if props is None:
+            props = ["data", "name", "uuid"]
+
+        if not self.viewer.layers:
+            raise ValueError("No layers in the viewer.")
+
+        if self.settings_handler.get_settings()["debug_settings"].get("debug"):
+            print(f"Debug | Getting all images with properties: {props}")
+
+            # Change synonyms to correct property names
+            props = [ACCEPTABLE_SYNONYMS.get(prop, prop) for prop in props]
+
+        return [
+            {prop: getattr(layer, prop) for prop in props} for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)
+        ]
+
     def get_all_labels(self):
         """
             Get all labels from the napari viewer.
@@ -56,15 +82,18 @@ class ImageHandler(QWidget):
             name = f"Image {len(self.viewer.layers)}"
         self.viewer.add_image(image, name=name)
 
-    def add_label(self, label, name=None):
+    def add_label(self, label, name=None, scale=None, metadata=None):
         """
             Add a label to the napari viewer.
         """
+
         if not isinstance(label, np.ndarray):
             raise TypeError("Label must be a numpy array.")
+        if scale is None:
+            scale = self.get_scale(0)
         if name is None:
             name = f"Label {len(self.viewer.layers)}"
-        self.viewer.add_labels(label, name=name)
+        self.viewer.add_labels(label, name=name, scale=scale, blending="additive", metadata=metadata)
 
     def init_load_button_ui(self):
         """
@@ -108,7 +137,7 @@ class ImageHandler(QWidget):
         )
         if not folder:
             return False
-        self.settings_handler.update_setting("file_settings.input_folder", folder)
+        self.settings_handler.update_settings("file_settings.input_folder", folder)
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
         return True
 

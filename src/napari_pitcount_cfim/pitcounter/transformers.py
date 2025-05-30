@@ -20,7 +20,7 @@ _VGG_TRANSFORM = T.Compose([
 
 def czi_to_fmap(
     czi_path: Path | str,
-    size: tuple[int,int] = (256, 256)
+    size: tuple[int,int] = None
 ) -> np.ndarray:
     """
     Load a .czi microscopy image and return its raw VGG conv2_2 feature map.
@@ -32,6 +32,9 @@ def czi_to_fmap(
     Returns:
       fmap: numpy array of shape (H, W, 128), where H/W are the original image dims.
     """
+    if size is None:
+        print(f"Got None for size, using default (256, 256)")
+        size = (256, 256)
     # --- 1. Load & squeeze to 2D or 3D array ---
     arr = czifile.imread(str(czi_path))
     arr = np.squeeze(arr)  # e.g. (1,1,C,H,W,1) → (C,H,W) or (H,W,C) or (H,W)

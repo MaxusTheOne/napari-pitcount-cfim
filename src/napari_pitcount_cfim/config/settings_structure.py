@@ -58,8 +58,9 @@ class ModelSettings(BaseModel):
     """
     Settings for analysis model.
     """
-    model: str = Field(default="modelv1", description="Model name.")
-    model_path: str = Field(default="model.pkl", description="Path to the model file. Only if model is set to 'custom'.")
+    model: str = Field(default="unused", description="Model name. (unused)")
+    model_folder: str = Field(default="none", description="Path to the folder containing a model.joblib and transformer.joblib file.")
+    mask_color: str = Field(default="Blue", description="Color for the mask overlay. Color name or RGBA tuple. (e.g. 'Blue' or (0, 0, 255, 128))")
 
 
 class CFIMSettings(BaseModel):
@@ -68,7 +69,7 @@ class CFIMSettings(BaseModel):
 
         Update the version number here after a change.
     """
-    __version__: str = "0.8.0"
+    __version__: str = "0.9.3"
 
     version: str = Field(default=__version__)
     automation_settings: AutomationSettings = AutomationSettings()
@@ -77,18 +78,11 @@ class CFIMSettings(BaseModel):
     model_settings: ModelSettings = ModelSettings()
     debug_settings: DebugSettings = DebugSettings()
 
-    def model_post_init(self, _context):
-        """
-            Post init for inheritance that does not show up in yaml.
-        """
-
-        self.file_settings.debug = self.debug_settings.debug
-        self.file_settings.folder_prompt = self.automation_settings.folder_prompt
-        self.cellpose_settings.debug = self.debug_settings.debug
 
     def as_dict_with_virtuals(self) -> dict:
         d = self.model_dump()
-        d["file_settings"]["debug"] = self.file_settings.debug
-        d["file_settings"]["folder_prompt"] = self.file_settings.folder_prompt
-        d["cellpose_settings"]["debug"] = self.cellpose_settings.debug
+        d["file_settings"]["debug"] = self.debug_settings.debug
+        d["cellpose_settings"]["debug"] = self.debug_settings.debug
+        d["model_settings"]["debug"] = self.debug_settings.debug
+        d["file_settings"]["folder_prompt"] = self.automation_settings.folder_prompt
         return d

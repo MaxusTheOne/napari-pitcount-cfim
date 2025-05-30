@@ -4,7 +4,9 @@ Test script to run Cellpose segmentation on a TIFF file and visualize results in
 
 Modify `TIFF_PATH` below to point to your .tiff file.
 """
-import cellpose.models
+from pathlib import Path
+
+import cellpose
 import napari
 import numpy as np
 from cellpose import models
@@ -12,6 +14,8 @@ from cellpose.utils import remove_edge_masks
 from cellpose.dynamics import remove_bad_flow_masks
 import tifffile
 import importlib.resources as pkg_resources
+
+from napari.utils.notifications import show_warning
 
 """
 /Lib/site-packages/cellpose/models.py:38
@@ -27,6 +31,9 @@ normalize params = {
     "invert": False
 }
 """
+# DEFAULTS
+DEFAULT_DIAMETER = 30
+
 
 class CellposeUser:
     def __init__(self, cellpose_settings = None):
@@ -57,12 +64,14 @@ class CellposeUser:
             "tile_norm_smooth3D": 1,
             "invert": False
         }
+        model_name = self.cellpose_settings["model_type"]
+
 
         try:
-            self.model = models.Cellpose(
+
+            self.model = models.CellposeModel(
                 gpu=self.cellpose_settings["gpu"],
-                model_type=self.cellpose_settings["model_type"],
-                nchan=2
+                pretrained_model=model_name,
             )
         except KeyError as e:
             raise ValueError(f"Invalid cellpose settings: {e}")
@@ -83,12 +92,8 @@ class CellposeUser:
             img: np.ndarray
             output_dir: directory to save individual cell crops
         """
-        print(f"Dev | Got diameter: {self.cellpose_settings['diameter']}")
-
-        masks_list, flows, styles, diams = self.model.eval(
+        cellpose_result = self.model.eval(
             [img],
-            channels=[0, 0],
-            resample=True,
             normalize=self.normalize_params,
             invert=False,
             diameter=self.cellpose_settings["diameter"],
@@ -97,8 +102,16 @@ class CellposeUser:
             augment=False,
             min_size=30,
 
-
         )
+        if len(cellpose_result) == 4:
+            masks_list, flows, styles, diams = cellpose_result
+        elif len(cellpose_result) == 3:
+            masks_list, flows, styles = cellpose_result
+            diams = 0
+        else:
+            raise ValueError(f"Unexpected Cellpose result length: {len(cellpose_result)}")
+
+
         masks = np.array(masks_list[0])
 
         if self.cellpose_settings["border_filter"]:
@@ -115,12 +128,16 @@ class CellposeUser:
         Parameters:
             img: np.ndarray
         """
-
-        if self.cellpose_settings["diameter"] is not None:
+        if self.cellpose_settings["diameter"] not in (None, "", "0", 0.0):
             return self.cellpose_settings["diameter"]
+        cp_version = cellpose.version
+        if cp_version >= "4.0.0":
+            # diameter = cellpose.utils.diameters()
+            show_warning(f"Cellpose {cp_version} does not support size estimation. Setting diameter to {DEFAULT_DIAMETER}.")
+            return DEFAULT_DIAMETER
+
         size_model = self.model.sz
         diameter = size_model.eval(img, [0, 0], normalize=self.normalize_params)
-        print(f"[*] Estimated diameter: {diameter}")
         return diameter[0]
 
 
