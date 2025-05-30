@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 from tkinter.messagebox import showinfo
 from typing import List
 
 import numpy as np
+from PyQt6.QtCore import QEventLoop
 from qtpy.QtCore import qInstallMessageHandler
 from qtpy.QtWidgets import QPushButton, QProgressBar
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLayout, QLabel, QGroupBox
@@ -26,51 +28,89 @@ class MainWidget(QWidget):
         # setup_python_logging()
         # qInstallMessageHandler(qt_message_logger)
         # setup_thread_exception_hook()
-
+        if os.getenv("PITCOUNT_CFIM_NO_GUI", "0") == "1":
+            self.no_gui = True
+            self.verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
+        else:
+            self.no_gui = False
 
         self.viewer = napari_viewer
         self.setting_handler = SettingsHandler(parent=self) #1
-        self.image_handler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
+        self.image_handler: ImageHandler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
         self.result_handler = ResultHandler(parent=self)
         self._workers = []
         self.model_user: ModelUser | None = None
 
-        layout = QVBoxLayout()
-        layout.setSizeConstraint(QLayout.SetFixedSize)
-        self.setLayout(layout)
+        if self.no_gui:
+            if self.verbosity > 0:
+                print("NO GUI | Skipping GUI initialization.")
+            self._run_pipeline()
+        else:
+            layout = QVBoxLayout()
+            layout.setSizeConstraint(QLayout.SetFixedSize)
+            self.setLayout(layout)
 
-        self._add_logo()
+            self._add_logo()
 
-        open_settings_group = self.setting_handler.init_ui()
-        self.layout().addWidget(open_settings_group)
-        pane = QGroupBox(self)
-        pane.setTitle("Input / Output")
-        pane.setLayout(QVBoxLayout())
-        pane.layout().addWidget(self.image_handler.init_load_button_ui())
-        pane.layout().addWidget(self.result_handler.init_output_button_ui())
-        self.layout().addWidget(pane)
+            open_settings_group = self.setting_handler.init_ui()
+            self.layout().addWidget(open_settings_group)
+            pane = QGroupBox(self)
+            pane.setTitle("Input / Output")
+            pane.setLayout(QVBoxLayout())
+            pane.layout().addWidget(self.image_handler.init_load_button_ui())
+            pane.layout().addWidget(self.result_handler.init_output_button_ui())
+            self.layout().addWidget(pane)
 
-        pane = QGroupBox(self)
-        pane.setTitle("Analysis")
-        pane.setLayout(QVBoxLayout())
+            pane = QGroupBox(self)
+            pane.setTitle("Analysis")
+            pane.setLayout(QVBoxLayout())
 
-        self.cellpose_button = QPushButton("Cellpose all images")
-        self.cellpose_button.clicked.connect(self._run_analysis)
+            self.cellpose_button = QPushButton("Cellpose all images")
+            self.cellpose_button.clicked.connect(self._run_analysis)
 
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setMinimum(0)
+            self.progress_bar = QProgressBar(self)
+            self.progress_bar.setMinimum(0)
 
-        self.ml_button = QPushButton("ML all images")
-        self.ml_button.clicked.connect(self._run_ml_analysis)
+            self.ml_button = QPushButton("ML all images")
+            self.ml_button.clicked.connect(self._run_ml_analysis)
 
-        pane.layout().addWidget(self.cellpose_button)
-        pane.layout().addWidget(self.progress_bar)
-        pane.layout().addWidget(self.ml_button)
+            pane.layout().addWidget(self.cellpose_button)
+            pane.layout().addWidget(self.progress_bar)
+            pane.layout().addWidget(self.ml_button)
 
-        self.layout().addWidget(pane)
+            self.layout().addWidget(pane)
 
-        # self._update_widget_settings()
+            # self._update_widget_settings()
 
+    def _run_pipeline(self):
+        """
+        Run the pipeline without GUI.
+        """
+        settings = self.setting_handler.get_updated_settings()
+
+        # Load images
+        input_path = os.getenv("PITCOUNT_CFIM_INPUT_FOLDER", "")
+        verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
+        self.image_handler.load_images({"input_folder": input_path, "verbosity": verbosity})
+
+        if self.verbosity >= 2:
+            print(f"Loaded {len(self.image_handler.get_all_images())} images")
+        # Run Cellpose analysis
+        self._run_analysis()
+        segmentation_masks = len(self.image_handler.get_all_labels())
+        if self.verbosity >= 2:
+            print(f"Completed Cellpose segmentation on {segmentation_masks} images")
+
+        # Pit finder ml
+        model_folder = os.getenv("PITCOUNT_CFIM_MODEL_FOLDER", None)
+        self._run_ml_analysis(model_folder)
+        if self.verbosity >= 2:
+            print(f"Completed ML for {len(self.image_handler.get_all_labels()) - segmentation_masks} images")
+        #
+        # # Save results
+        # self.result_handler.save_results()
+        #
+        print("Pipeline completed successfully.")
 
     def _update_widget_settings(self):
         """
@@ -110,23 +150,32 @@ class MainWidget(QWidget):
         layers = self.image_handler.get_all_images()
         total = len(layers)
 
+        gui = not self.no_gui
+
         if total == 0:
             showinfo("No images loaded")
             return  # No images loaded, nothing to do
 
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("%p%")
+        if gui:
+            self.progress_bar.setMinimum(0)
+            self.progress_bar.setMaximum(total)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("%p%")
 
-        # Turn off the analysis button
-        self.cellpose_button.setEnabled(False)
-        self.cellpose_button.setText(f"Analyzing {total} images...")
+            # Turn off the analysis button
+            self.cellpose_button.setEnabled(False)
+            self.cellpose_button.setText(f"Analyzing {total} images...")
+        else:
+            verbosity = self.verbosity
+            print(f"Running Cellpose on {total} images... | Verbosity: {verbosity}")
 
+            self._event_loop = QEventLoop()
 
 
         # Initialize counter for completed images
         self._completed = 0
+
+
         scale = self.image_handler.get_scale(0)
         cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
 
@@ -138,16 +187,24 @@ class MainWidget(QWidget):
         # Define a slot to handle results coming from worker threads
         def _on_segmentation_result(mask, image_name):
             """Receive segmentation result from a worker and update the viewer/UI."""
-            # Add the segmentation mask as a labels layer (only mask is added, no flows)
             self.image_handler.add_label(mask, name=f"{image_name}_mask", scale=scale, metadata={"cfim_type": "segmentation"})
-            # Update progress
+
             self._completed += 1
-            self.progress_bar.setValue(self._completed)
-            # If all images are processed, ensure progress bar reaches 100%
-            if self._completed == total:
-                self.progress_bar.setValue(total)
-                self.cellpose_button.setEnabled(True)
-                self.cellpose_button.setText("Cellpose all images")
+            if gui:
+                # Update progress
+                self.progress_bar.setValue(self._completed)
+                if self._completed == total:
+                    self.progress_bar.setValue(total)
+                    self.cellpose_button.setEnabled(True)
+                    self.cellpose_button.setText("Cellpose all images")
+            else:
+                if verbosity >= 1:
+                    print(f"Completed {self._completed}/{total} images.")
+
+                if self._completed == total:
+                    if verbosity >= 1:
+                        print("Cellpose analysis completed for all images.")
+                    self._event_loop.quit()
 
         # Launch a worker thread for each image to run Cellpose in parallel
         for data in layers:
@@ -161,11 +218,24 @@ class MainWidget(QWidget):
 
             self._workers.append(worker)
             worker.start()
+        if not gui:
+            self._event_loop.exec_()
 
-    def _run_ml_analysis(self):
+    def _run_ml_analysis(self, model_folder: str = None):
+
         settings = self.setting_handler.get_updated_settings().get("model_settings")
-        if settings["model_folder"] == "none" or not Path(settings["model_folder"]).exists():
-            print("No model folder set, attempting to load default model.")
+        gui = not self.no_gui
+        if model_folder:
+            model_folder = Path(model_folder)
+            if model_folder.exists():
+                settings["model_folder"] = str(model_folder)
+            else:
+                print(f"No model folder found at {model_folder}")
+                model_folder = None
+
+
+        if settings["model_folder"] == "none" or not Path(settings["model_folder"]).exists() and not model_folder:
+            print(f"Expected path to folder, got {settings["model_folder"]}, attempting to load default model.")
             settings["model_folder"] = Path(__file__).parent / "pitcounter" / "models" / DEFAULT_MODEL
             model_folder = settings["model_folder"]
 
@@ -179,11 +249,12 @@ class MainWidget(QWidget):
 
         images = self.image_handler.get_all_images_props(["data", "name", "uuid"])
 
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(len(images))
-        self.progress_bar.setValue(0)
+        if gui:
+            self.progress_bar.setMinimum(0)
+            self.progress_bar.setMaximum(len(images))
+            self.progress_bar.setValue(0)
 
-        self.ml_button.setEnabled(False)
+            self.ml_button.setEnabled(False)
 
         completed = 0
 
@@ -194,10 +265,14 @@ class MainWidget(QWidget):
             prediction = self.model_user.predict_from_npy(data)
 
             completed += 1
-            self.progress_bar.setValue(completed)
             self.image_handler.add_label(prediction, name=f"{name}_prediction", metadata={"cfim_type": "prediction", "image_input_id": unique_id})
-
-        self.ml_button.setEnabled(True)
+            if gui:
+                self.progress_bar.setValue(completed)
+            else:
+                if self.verbosity >= 1:
+                    print(f"Completed {completed}/{len(images)} images.")
+        if gui:
+            self.ml_button.setEnabled(True)
 
     def _cleanup_worker(self, worker):
         if worker in self._workers:
