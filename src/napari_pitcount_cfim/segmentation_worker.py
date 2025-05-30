@@ -4,13 +4,15 @@ import numpy as np
 from qtpy.QtCore import QThread, Signal
 from qtpy.QtWidgets import QProgressBar
 
+from napari_pitcount_cfim.cellpose_analysis.cellpose_user import CellposeUser
+
 
 # Worker thread class for running Cellpose on a single image
 class SegmentationWorker(QThread):
     # Signal to emit the result (mask and image name) back to the main thread
     result = Signal(object, str)  # emits (mask_array, image_name)
 
-    def __init__(self, image_data, image_name, cellpose_user):
+    def __init__(self, image_data, image_name, cellpose_user: CellposeUser):
         super().__init__()
         self.image_data = image_data
         self.image_name = image_name

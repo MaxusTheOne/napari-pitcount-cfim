@@ -60,6 +60,7 @@ class ModelSettings(BaseModel):
     """
     model: str = Field(default="unused", description="Model name. (unused)")
     model_folder: str = Field(default="none", description="Path to the folder containing a model.joblib and transformer.joblib file.")
+    mask_color: str = Field(default="Blue", description="Color for the mask overlay. Color name or RGBA tuple. (e.g. 'Blue' or (0, 0, 255, 128))")
 
 
 class CFIMSettings(BaseModel):

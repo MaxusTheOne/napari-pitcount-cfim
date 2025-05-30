@@ -69,7 +69,6 @@ class MainWidget(QWidget):
 
         self.layout().addWidget(pane)
 
-        print(f"[*] Dev | Settings: {self.setting_handler.get_settings()}")
         # self._update_widget_settings()
 
 
@@ -100,7 +99,6 @@ class MainWidget(QWidget):
             Mostly for testing, runs Cellpose SizeModel to estimate diameter.
         """
         user = CellposeUser(cellpose_settings=self.setting_handler.get_settings().get("cellpose_settings"))
-
         diam = user.estimate_size(image)
 
         return diam
@@ -132,7 +130,7 @@ class MainWidget(QWidget):
         scale = self.image_handler.get_scale(0)
         cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
 
-        if cellpose_settings.get("diameter") is None:
+        if cellpose_settings.get("diameter") in (None, "", "0", 0.0):
             cellpose_settings["diameter"] = self._run_estimate(image=layers[0])
         if scale.shape == (3,):
             scale = scale[1:]
@@ -194,9 +192,6 @@ class MainWidget(QWidget):
             name = image["name"]
             unique_id = image["unique_id"]
             prediction = self.model_user.predict_from_npy(data)
-
-            values, counts = np.unique(prediction, return_counts=True)
-            print(dict(zip(values, counts)))
 
             completed += 1
             self.progress_bar.setValue(completed)

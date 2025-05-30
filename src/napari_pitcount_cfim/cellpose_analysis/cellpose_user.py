@@ -6,6 +6,7 @@ Modify `TIFF_PATH` below to point to your .tiff file.
 """
 from pathlib import Path
 
+import cellpose
 import napari
 import numpy as np
 from cellpose import models
@@ -13,6 +14,8 @@ from cellpose.utils import remove_edge_masks
 from cellpose.dynamics import remove_bad_flow_masks
 import tifffile
 import importlib.resources as pkg_resources
+
+from napari.utils.notifications import show_warning
 
 """
 /Lib/site-packages/cellpose/models.py:38
@@ -28,6 +31,9 @@ normalize params = {
     "invert": False
 }
 """
+# DEFAULTS
+DEFAULT_DIAMETER = 30
+
 
 class CellposeUser:
     def __init__(self, cellpose_settings = None):
@@ -58,26 +64,14 @@ class CellposeUser:
             "tile_norm_smooth3D": 1,
             "invert": False
         }
-        local_models: list[str] = models.get_user_models()
-
         model_name = self.cellpose_settings["model_type"]
-        model_path = next((p for p in local_models if Path(p).stem == model_name), None)
 
-        if model_path is None:
-            user_path = Path.home().joinpath(".cellpose", "models")
-            print(f"No paths found from Cellpose: {local_models}\n - trying alternative path: '{user_path}'")
-            user_model_path = user_path.joinpath(model_name)
-            if user_model_path.exists():
-                model_path = str(user_model_path)
-                print(f"Found model at: {model_path}")
-            else:
-                raise ValueError(f"Model '{model_name}' not found in local Cellpose models: {local_models} or {user_model_path}")
 
         try:
 
             self.model = models.CellposeModel(
                 gpu=self.cellpose_settings["gpu"],
-                pretrained_model=model_path,
+                pretrained_model=model_name,
             )
         except KeyError as e:
             raise ValueError(f"Invalid cellpose settings: {e}")
@@ -134,12 +128,16 @@ class CellposeUser:
         Parameters:
             img: np.ndarray
         """
-
-        if self.cellpose_settings["diameter"] is not None:
+        if self.cellpose_settings["diameter"] not in (None, "", "0", 0.0):
             return self.cellpose_settings["diameter"]
+        cp_version = cellpose.version
+        if cp_version >= "4.0.0":
+            # diameter = cellpose.utils.diameters()
+            show_warning(f"Cellpose {cp_version} does not support size estimation. Setting diameter to {DEFAULT_DIAMETER}.")
+            return DEFAULT_DIAMETER
+
         size_model = self.model.sz
         diameter = size_model.eval(img, [0, 0], normalize=self.normalize_params)
-        print(f"[*] Estimated diameter: {diameter}")
         return diameter[0]
 
 

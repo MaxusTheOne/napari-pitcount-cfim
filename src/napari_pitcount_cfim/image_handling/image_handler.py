@@ -55,7 +55,7 @@ class ImageHandler(QWidget):
             raise ValueError("No layers in the viewer.")
 
         if self.settings_handler.get_settings()["debug_settings"].get("debug"):
-            print(f"Dev | Getting all images with properties: {props}")
+            print(f"Debug | Getting all images with properties: {props}")
 
             # Change synonyms to correct property names
             props = [ACCEPTABLE_SYNONYMS.get(prop, prop) for prop in props]
@@ -91,7 +91,6 @@ class ImageHandler(QWidget):
             raise TypeError("Label must be a numpy array.")
         if scale is None:
             scale = self.get_scale(0)
-            print(f"Dev | set scale to {scale}")
         if name is None:
             name = f"Label {len(self.viewer.layers)}"
         self.viewer.add_labels(label, name=name, scale=scale, blending="additive", metadata=metadata)
@@ -138,7 +137,6 @@ class ImageHandler(QWidget):
         )
         if not folder:
             return False
-        print(f"Dev | settings_handler dir: {dir(self.settings_handler)}")
         self.settings_handler.update_settings("file_settings.input_folder", folder)
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
         return True
