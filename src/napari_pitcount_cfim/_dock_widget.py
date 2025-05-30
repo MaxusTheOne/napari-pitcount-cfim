@@ -3,6 +3,7 @@ from pathlib import Path
 from tkinter.messagebox import showinfo
 from typing import List
 
+import cellpose
 import numpy as np
 from PyQt6.QtCore import QEventLoop
 from qtpy.QtCore import qInstallMessageHandler
@@ -138,6 +139,10 @@ class MainWidget(QWidget):
         """
             Mostly for testing, runs Cellpose SizeModel to estimate diameter.
         """
+        cp_version = cellpose.version
+        if cp_version >= "4.0.1":
+            print(f"Cellpose version {cp_version} does not support size estimation pre-analysis.\n setting diameter to 30.")
+            return 30.0
         user = CellposeUser(cellpose_settings=self.setting_handler.get_settings().get("cellpose_settings"))
         diam = user.estimate_size(image)
 
@@ -151,6 +156,7 @@ class MainWidget(QWidget):
         total = len(layers)
 
         gui = not self.no_gui
+        verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
 
         if total == 0:
             showinfo("No images loaded")
@@ -166,8 +172,7 @@ class MainWidget(QWidget):
             self.cellpose_button.setEnabled(False)
             self.cellpose_button.setText(f"Analyzing {total} images...")
         else:
-            verbosity = self.verbosity
-            print(f"Running Cellpose on {total} images... | Verbosity: {verbosity}")
+            print(f"Running Cellpose on {total} images... | Dev Verbosity: {verbosity}")
 
             self._event_loop = QEventLoop()
 
