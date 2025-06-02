@@ -5,8 +5,7 @@ from typing import List
 
 import cellpose
 import numpy as np
-from PyQt6.QtCore import QEventLoop
-from qtpy.QtCore import qInstallMessageHandler
+from qtpy.QtCore import qInstallMessageHandler, QEventLoop
 from qtpy.QtWidgets import QPushButton, QProgressBar
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLayout, QLabel, QGroupBox
 
