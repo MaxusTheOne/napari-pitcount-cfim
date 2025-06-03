@@ -4,6 +4,7 @@ from tkinter.messagebox import showinfo
 from typing import List
 
 import cellpose
+import napari
 import numpy as np
 from qtpy.QtCore import qInstallMessageHandler, QEventLoop
 from qtpy.QtWidgets import QPushButton, QProgressBar
@@ -22,7 +23,7 @@ DEFAULT_MODEL = "ne64_md20_fl0.3"
 
 
 class MainWidget(QWidget):
-    def __init__(self, napari_viewer, parent=None):
+    def __init__(self, napari_viewer: napari.viewer, parent=None):
         super().__init__(parent=parent)
 
         # setup_python_logging()
@@ -66,7 +67,7 @@ class MainWidget(QWidget):
             pane.setLayout(QVBoxLayout())
 
             self.cellpose_button = QPushButton("Cellpose all images")
-            self.cellpose_button.clicked.connect(self._run_analysis)
+            self.cellpose_button.clicked.connect(self._run_cellpose_segmentation)
 
             self.progress_bar = QProgressBar(self)
             self.progress_bar.setMinimum(0)
@@ -96,7 +97,7 @@ class MainWidget(QWidget):
         if self.verbosity >= 2:
             print(f"Loaded {len(self.image_handler.get_all_images())} images")
         # Run Cellpose analysis
-        self._run_analysis()
+        self._run_cellpose_segmentation()
         segmentation_masks = len(self.image_handler.get_all_labels())
         if self.verbosity >= 2:
             print(f"Completed Cellpose segmentation on {segmentation_masks} images")
@@ -111,6 +112,7 @@ class MainWidget(QWidget):
         # self.result_handler.save_results()
         #
         print("Pipeline completed successfully.")
+        self.viewer.close()
 
     def _update_widget_settings(self):
         """
@@ -144,12 +146,14 @@ class MainWidget(QWidget):
             return 30.0
         user = CellposeUser(cellpose_settings=self.setting_handler.get_settings().get("cellpose_settings"))
         diam = user.estimate_size(image)
+        if self.verbosity >= 1:
+            print(f"Estimated diameter: {diam}")
 
         return diam
 
 
 
-    def _run_analysis(self):
+    def _run_cellpose_segmentation(self):
         """Run Cellpose segmentation on all images using background threads."""
         layers = self.image_handler.get_all_images()
         total = len(layers)
@@ -183,7 +187,7 @@ class MainWidget(QWidget):
         scale = self.image_handler.get_scale(0)
         cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
 
-        if cellpose_settings.get("diameter") in (None, "", "0", 0.0):
+        if cellpose_settings.get("diameter") in (None, "", "0", 0.0, 0):
             cellpose_settings["diameter"] = self._run_estimate(image=layers[0])
         if scale.shape == (3,):
             scale = scale[1:]
