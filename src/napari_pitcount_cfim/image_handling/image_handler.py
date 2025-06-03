@@ -103,6 +103,15 @@ class ImageHandler(QWidget):
         self.load_button.clicked.connect(self._load_images)
         return self.load_button
 
+    def load_images(self, load_settings):
+        """
+            Load images from a folder into the napari viewer.
+            If path is provided, it will be used as the input path.
+        """
+        path = load_settings.get("input_folder", "")
+        verbosity = load_settings.get("verbosity", 0)
+        self._load_images(path, verbosity)
+
     def set_output_path(self, path):
         """
             Set the output path for the images.
@@ -141,22 +150,38 @@ class ImageHandler(QWidget):
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
         return True
 
-    def _load_images(self):
+    def _load_images(self, path: Path=None, verbosity: int=0):
         """
         Load images from a folder into the napari viewer.
         """
         # 0) Update the settings:
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
-        # 1) If prompting is enabled, ask the user now:
-        if self.settings.get("folder_prompt"):
-            if not self._select_folder():
-                return  # user cancelled, so do nothing
 
-        # 2) Make sure we have a path (either from the dialog or pre‐set):
-        if not self.settings.get("input_folder"):
-            raise ValueError("input path is not set. Please set the input path before loading images.")
+        if path:
+            if path.exists() and path.is_dir():
+                folder_path = Path(path)
+                if verbosity >= 1:
+                    print(f"Loading images from given path: {folder_path}")
+            else:
+                if self.settings.get("input_folder"):
+                    folder_path = Path(self.settings.get("input_folder"))
+                    if verbosity >= 1:
+                        print(f"No path given, using input_path from settings: {folder_path}")
+                else:
+                    raise ValueError(f"Expected a valid path, but got: {path}. Please provide a valid path or set the input folder in settings.")
 
-        # 3) Collect and open:
-        img_dir   = Path(self.settings.get("input_folder"))
+        else:
+            if self.settings.get("folder_prompt"):
+                if not self._select_folder():
+                    return  # user cancelled, so do nothing
+
+            # 2) Make sure we have a path (either from the dialog or pre‐set):
+            if not self.settings.get("input_folder"):
+                raise ValueError("input path is not set. Please set the input path before loading images.")
+            else:
+                folder_path = self.settings.get("input_folder")
+
+
+        img_dir   = Path(folder_path)
         img_paths = sorted(img_dir.iterdir())
         self.viewer.open(img_paths, plugin=None)
