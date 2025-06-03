@@ -1,4 +1,7 @@
 import os
+import sys
+import traceback
+from uuid import UUID
 from pathlib import Path
 from tkinter.messagebox import showinfo
 from typing import List
@@ -26,28 +29,35 @@ class MainWidget(QWidget):
     def __init__(self, napari_viewer: napari.viewer, parent=None):
         super().__init__(parent=parent)
 
-        # setup_python_logging()
-        # qInstallMessageHandler(qt_message_logger)
-        # setup_thread_exception_hook()
-        if os.getenv("PITCOUNT_CFIM_NO_GUI", "0") == "1":
-            self.no_gui = True
-            self.verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
-        else:
-            self.no_gui = False
-            self.verbosity = 0
+        ## Enable to log just about everything to the console.
+        if os.getenv("PITCOUNT_CFIM_FULL_LOGGING", "0") == "1":
+            setup_python_logging()
+            qInstallMessageHandler(qt_message_logger)
+            setup_thread_exception_hook()
+
 
         self.viewer = napari_viewer
         self.setting_handler = SettingsHandler(parent=self) #1
         self.image_handler: ImageHandler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
-        self.result_handler = ResultHandler(parent=self)
+        self.result_handler = ResultHandler(parent=self, settings_handler=self.setting_handler)
         self._workers = []
         self.model_user: ModelUser | None = None
 
-        if self.no_gui:
-            if self.verbosity > 0:
-                print("NO GUI | Skipping GUI initialization.")
-            self._run_pipeline()
+
+        if os.getenv("PITCOUNT_CFIM_NO_GUI", "0") == "1":
+            self.no_gui = True
+            self.verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
+            try:
+                if self.verbosity > 0:
+                    print("NO GUI | Skipping GUI initialization.")
+                self._run_pipeline()
+            except Exception:
+                traceback.print_exc()
+                sys.exit(1)
         else:
+            self.no_gui = False
+            self.verbosity = 0
+
             layout = QVBoxLayout()
             layout.setSizeConstraint(QLayout.SetFixedSize)
             self.setLayout(layout)
@@ -82,6 +92,16 @@ class MainWidget(QWidget):
 
             self.layout().addWidget(pane)
 
+            pane = QGroupBox(self)
+            pane.setTitle("Results")
+            pane.setLayout(QVBoxLayout())
+
+            self.results_button = self.result_handler.init_output_button_ui()
+
+            pane.layout().addWidget(self.results_button)
+
+            self.layout().addWidget(pane)
+
             # self._update_widget_settings()
 
     def _run_pipeline(self):
@@ -91,29 +111,74 @@ class MainWidget(QWidget):
         settings = self.setting_handler.get_updated_settings()
 
         # Load images
-        input_path = os.getenv("PITCOUNT_CFIM_INPUT_FOLDER", "")
+        input_path = os.getenv("PITCOUNT_CFIM_INPUT_FOLDER", "find_path")
+        output_folder = os.getenv("PITCOUNT_CFIM_OUTPUT_FOLDER", "find_path")
         verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
-        self.image_handler.load_images({"input_folder": input_path, "verbosity": verbosity})
+        save_raw = True if os.getenv("PITCOUNT_CFIM_SAVE_RAW", "0") == "1" else False
+
+
+        image_layers = self.image_handler.load_images({"input_folder": input_path, "verbosity": verbosity})
+        print(f"Dev | Layer count: {len(image_layers)} | type: {type(image_layers)}")
+        for layer in image_layers:
+            print(f"Dev | Layer type: {type(layer)} | props: {dir(layer)}")
+            print(f"Dev | Layer id: {layer.unique_id}")
+            image_uuid = layer.unique_id
+            self.result_handler.start_result_record(image_uuid=image_uuid, image_name=layer.name)
+            self.result_handler.set_image(image_uuid ,layer.data)
 
         if self.verbosity >= 2:
-            print(f"Loaded {len(self.image_handler.get_all_images())} images")
+            print(f"NO GUI | Loaded {len(self.image_handler.get_all_images())} images")
         # Run Cellpose analysis
-        self._run_cellpose_segmentation()
-        segmentation_masks = len(self.image_handler.get_all_labels())
-        if self.verbosity >= 2:
-            print(f"Completed Cellpose segmentation on {segmentation_masks} images")
+        self._run_cellpose_segmentation(image_layers=image_layers)
+        segmentation_masks = self.image_handler.get_all_labels()
 
-        # Pit finder ml
-        model_folder = os.getenv("PITCOUNT_CFIM_MODEL_FOLDER", None)
-        self._run_ml_analysis(model_folder)
+        # Skip ml if mask args are provided
+        pit_mask_folder = os.getenv("PITCOUNT_CFIM_PIT_MASK_FOLDER", "None")
+
+        if pit_mask_folder != "None":
+            import czifile
+
+            pit_mask_folder = Path(pit_mask_folder)
+            if not pit_mask_folder.exists():
+                raise ValueError(f"Provided pit mask folder '{pit_mask_folder}' does not exist.")
+            if self.verbosity >= 2:
+                print(f"NO GUI | Using provided pit mask folder: {pit_mask_folder}")
+            # Load pit masks from the provided folder
+            pit_masks = []
+            for pit_mask_file in pit_mask_folder.glob("*.npy"):
+                pit_mask = np.load(pit_mask_file)
+                pit_masks.append(pit_mask)
+            for pit_mask_file in pit_mask_folder.glob("*.tif"):
+                pit_mask = np.load(pit_mask_file)
+                pit_masks.append(pit_mask)
+            for pit_mask_file in pit_mask_folder.glob("*.czi"):
+                pit_mask = czifile.imread(pit_mask_file)
+
+                pit_masks.append(np.squeeze(pit_mask))
+
+            if self.verbosity >= 2:
+                print(f"NO GUI | Loaded {len(pit_masks)} pit masks from {pit_mask_folder}")
+        else:
+            # Pit finder ml
+            model_folder = os.getenv("PITCOUNT_CFIM_MODEL_FOLDER", None)
+            pit_masks = self._run_ml_analysis(model_folder)
+            if self.verbosity >= 2:
+                print(f"NO GUI | Completed ML for {len(self.image_handler.get_all_labels()) - len(segmentation_masks)} images")
+
+        image_data = self.image_handler.get_all_images_props(["data", "name", "uuid"])
+        # Results handling
         if self.verbosity >= 2:
-            print(f"Completed ML for {len(self.image_handler.get_all_labels()) - segmentation_masks} images")
-        #
-        # # Save results
-        # self.result_handler.save_results()
-        #
-        print("Pipeline completed successfully.")
-        self.viewer.close()
+            print(f"NO GUI | Saving results for {len(image_data)} images, {len(segmentation_masks)} segmentation masks, and {len(pit_masks)} pit masks.")
+            print(f"NO GUI | Sizes: images={image_data[0].get('data').shape if image_data else 'N/A'}, segmentation_masks={segmentation_masks[0].shape if segmentation_masks else 'N/A'}, pit_masks={pit_masks[0].shape if pit_masks else 'N/A'}")
+
+
+        self.result_handler.set_result_layers({"images": image_data, "cell_masks": segmentation_masks, "pit_masks": pit_masks})
+        self.result_handler.set_raw_setting(save_raw)
+
+        self.result_handler.output_results(output_folder)
+
+        print("NO GUI | Pipeline completed successfully.")
+        sys.exit(0)
 
     def _update_widget_settings(self):
         """
@@ -154,9 +219,12 @@ class MainWidget(QWidget):
 
 
 
-    def _run_cellpose_segmentation(self):
+    def _run_cellpose_segmentation(self, image_layers = None):
         """Run Cellpose segmentation on all images using background threads."""
-        layers = self.image_handler.get_all_images()
+        if image_layers is None:
+            layers = self.image_handler.get_all_images_props(["data", "name", "uuid"])
+        else:
+            layers = image_layers
         total = len(layers)
 
         gui = not self.no_gui
@@ -189,14 +257,15 @@ class MainWidget(QWidget):
         cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
 
         if cellpose_settings.get("diameter") in (None, "", "0", 0.0, 0):
-            cellpose_settings["diameter"] = self._run_estimate(image=layers[0])
+            cellpose_settings["diameter"] = self._run_estimate(image=layers[0].data)
         if scale.shape == (3,):
             scale = scale[1:]
 
         # Define a slot to handle results coming from worker threads
-        def _on_segmentation_result(mask, image_name):
+        def _on_segmentation_result(mask, image_layer_name, image_uuid: UUID):
             """Receive segmentation result from a worker and update the viewer/UI."""
-            self.image_handler.add_label(mask, name=f"{image_name}_mask", scale=scale, metadata={"cfim_type": "segmentation"})
+            self.result_handler.set_cell_mask(image_uuid, mask)
+            self.image_handler.add_label(mask, name=f"{image_layer_name}_mask", scale=scale, metadata={"cfim_type": "segmentation"})
 
             self._completed += 1
             if gui:
@@ -210,18 +279,22 @@ class MainWidget(QWidget):
                 if verbosity >= 1:
                     print(f"Completed {self._completed}/{total} images.")
 
+
                 if self._completed == total:
                     if verbosity >= 1:
                         print("Cellpose analysis completed for all images.")
                     self._event_loop.quit()
 
         # Launch a worker thread for each image to run Cellpose in parallel
-        for data in layers:
+        for layer in layers:
+            data = layer.data
+            name = layer.name
+            uuid = layer.unique_id
+
             # If layers are Napari layer objects, get the numpy data and name
-            image_name = getattr(data, "name", "Image")  # layer.name if available
             cellpose_user = CellposeUser(cellpose_settings=cellpose_settings)
 
-            worker = SegmentationWorker(data, image_name, cellpose_user)
+            worker = SegmentationWorker(data, name, uuid, cellpose_user)
             worker.result.connect(_on_segmentation_result)
             worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
 
@@ -229,6 +302,7 @@ class MainWidget(QWidget):
             worker.start()
         if not gui:
             self._event_loop.exec_()
+
 
     def _run_ml_analysis(self, model_folder: str = None):
 
@@ -265,6 +339,8 @@ class MainWidget(QWidget):
 
             self.ml_button.setEnabled(False)
 
+
+        predictions = []
         completed = 0
 
         for image in images:
@@ -278,10 +354,14 @@ class MainWidget(QWidget):
             if gui:
                 self.progress_bar.setValue(completed)
             else:
+                predictions.append(prediction)
                 if self.verbosity >= 1:
                     print(f"Completed {completed}/{len(images)} images.")
         if gui:
             self.ml_button.setEnabled(True)
+        return predictions
+
+
 
     def _cleanup_worker(self, worker):
         if worker in self._workers:
