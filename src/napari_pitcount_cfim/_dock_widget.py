@@ -34,6 +34,7 @@ class MainWidget(QWidget):
             self.verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
         else:
             self.no_gui = False
+            self.verbosity = 0
 
         self.viewer = napari_viewer
         self.setting_handler = SettingsHandler(parent=self) #1
