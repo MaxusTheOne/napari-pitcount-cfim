@@ -2,6 +2,7 @@ import argparse
 import faulthandler
 import os
 import subprocess
+from pathlib import Path
 
 import napari
 
@@ -25,7 +26,7 @@ def launch_napari_dev_mode(mode='dev'):
         viewer.window.add_plugin_dock_widget("napari-pitcount-cfim", widget_name="Analyze pit count - CFIM")
         print("Activated plugin 'psf-analysis-CFIM'.")
     except ValueError:
-        print("Plugin 'psf-analysis-CFIM' not found or failed to load.")
+        print("Plugin 'napari-pitcount-cfim' not found or failed to load.")
     if os.getenv('PITCOUNT_CFIM_NO_GUI', "0") == "0":
         viewer.window.show()
     napari.run()
@@ -39,6 +40,12 @@ def launch_napari():
     except FileNotFoundError:
         print("Napari is not installed. Please install it by running 'pip install napari[all]'")
         exit(1)
+
+def family_setting(value):
+    if value.lower() in ['default', 'file', 'folder', 'all']:
+        return value.lower()
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid value for result grouping: {value}. Must be one of 'default', 'file', 'folder', or 'all'.")
 
 
 if __name__ == "__main__":
@@ -57,6 +64,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input-folder", "-i", type=str, help="Input folder (only with --no-gui)"
     )
+    parser.add_argument(
+        "--output-folder", "-o", type=str, help="Output folder for results (default: 'output')",
+    )
+    parser.add_argument(
+        "--pit-mask-folder", "-p", type=Path, default="None", help="If given, skips pit mask prediction and uses the provided folder for pit masks.",
+    )
+    parser.add_argument(
+        "--save-raw-data", action="store_true", help="Save raw data to the output folder. Only works in non-GUI mode."
+    )
+    parser.add_argument(
+        "--family-grouping", type=family_setting, default="default", help="Set the result grouping strategy. Options: 'default', 'file', 'folder', 'all'. Default is 'default'."
+    )
     args = parser.parse_args()
 
     # enforce dependency
@@ -64,14 +83,23 @@ if __name__ == "__main__":
         parser.error("--input-folder can only be used when --no-gui is set")
 
     if args.no_gui:
-        print("Running in non-GUI mode. This will disable the graphical interface and run the pipeline in the background.")
+        print("Running in non-GUI mode. This will disable the graphical interface.")
 
-        # Setup non-GUI environment variables
-        if args.input_folder:
-            os.environ["PITCOUNT_CFIM_INPUT_FOLDER"] = args.input_folder
-        if args.verbosity is not None:
-            os.environ["PITCOUNT_CFIM_VERBOSITY"] = str(args.verbosity)
-    os.environ["PITCOUNT_CFIM_NO_GUI"] = "1" if args.no_gui else "0"
+        os.environ["PITCOUNT_CFIM_NO_GUI"] = "1"
+
+        # Set environment variables for non-GUI mode
+        os.environ["PITCOUNT_CFIM_INPUT_FOLDER"] = args.input_folder or ""
+        os.environ["PITCOUNT_CFIM_OUTPUT_FOLDER"] = args.output_folder or ""
+        os.environ["PITCOUNT_CFIM_VERBOSITY"] = str(args.verbosity or 0)
+        os.environ["PITCOUNT_CFIM_SAVE_RAW_DATA"] = "1" if args.save_raw_data else "0"
+        os.environ["PITCOUNT_CFIM_FAMILY_GROUPING"] = args.family_grouping
+
+        if args.pit_mask_folder != "None":
+            if not args.pit_mask_folder.exists():
+                parser.error(f"Pit mask folder '{args.pit_mask_folder}' does not exist.")
+            os.environ["PITCOUNT_CFIM_PIT_MASK_FOLDER"] = str(args.pit_mask_folder)
+    else:
+        os.environ["PITCOUNT_CFIM_NO_GUI"] = "0"
 
 
     # Launch the appropriate mode

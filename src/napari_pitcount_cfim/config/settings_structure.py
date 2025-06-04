@@ -38,6 +38,7 @@ class FileSettings(BaseModel):
     # Attempted virtual fields
     debug: Optional[bool] = Field(default=None, exclude=True)
     folder_prompt: Optional[bool] = Field(default=None, exclude=True)
+    family_grouping: str = Field(default="default", description="Strategy for grouping results. Options: 'default', 'file', 'folder', 'all'.")
 
 
 class CellposeSettings(BaseModel):

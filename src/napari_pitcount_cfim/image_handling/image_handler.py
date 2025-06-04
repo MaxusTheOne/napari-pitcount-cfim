@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from pathlib import Path
 
+from uuid import UUID
 import napari.layers
 import numpy as np
 from qtpy.QtWidgets import QWidget, QPushButton, QFileDialog
@@ -10,6 +12,23 @@ ACCEPTABLE_SYNONYMS = {
     "meta": "metadata",
 
 }
+
+@dataclass
+class ImageLayerProps:
+    name: str
+    data: np.ndarray
+    unique_id: UUID
+
+    def get(self, prop_name: str):
+        """
+        Get a property from the ImageLayerProps.
+        """
+        if prop_name in ACCEPTABLE_SYNONYMS:
+            prop_name = ACCEPTABLE_SYNONYMS[prop_name]
+        if hasattr(self, prop_name):
+            return getattr(self, prop_name)
+        else:
+            raise AttributeError(f"Property '{prop_name}' not found in ImageLayerProps.")
 
 class ImageHandler(QWidget):
     """
@@ -23,7 +42,7 @@ class ImageHandler(QWidget):
             raise ValueError("Settings handler is not set. Please provide a settings handler.")
 
         self.settings = settings_handler.get_settings().get("file_settings")
-        self.viewer = napari_viewer
+        self.viewer: napari.viewer = napari_viewer
         self.parent = parent
         self.input_path = self.settings.get("input_folder")
         self.load_button = None
@@ -46,22 +65,25 @@ class ImageHandler(QWidget):
 
     def get_all_images_props(self, props=None):
         """
-            Get all images from the napari viewer with their properties.
+            Get all images from the napari viewer as ImageLayerProps.
         """
-        if props is None:
-            props = ["data", "name", "uuid"]
-
         if not self.viewer.layers:
             raise ValueError("No layers in the viewer.")
 
-        if self.settings_handler.get_settings()["debug_settings"].get("debug"):
-            print(f"Debug | Getting all images with properties: {props}")
+        # filter to image layers
+        image_layers = [
+            layer for layer in self.viewer.layers
+            if isinstance(layer, napari.layers.Image)
+        ]
 
-            # Change synonyms to correct property names
-            props = [ACCEPTABLE_SYNONYMS.get(prop, prop) for prop in props]
-
+        # build dataclass instances
         return [
-            {prop: getattr(layer, prop) for prop in props} for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)
+            ImageLayerProps(
+                name=layer.name,
+                data=layer.data,
+                unique_id=layer.unique_id
+            )
+            for layer in image_layers
         ]
 
     def get_all_labels(self):
@@ -108,9 +130,13 @@ class ImageHandler(QWidget):
             Load images from a folder into the napari viewer.
             If path is provided, it will be used as the input path.
         """
-        path = load_settings.get("input_folder", "")
+        path = Path(load_settings.get("input_folder", "find_path"))
         verbosity = load_settings.get("verbosity", 0)
-        self._load_images(path, verbosity)
+        print(f"Dev | Loading images from path: {path} with verbosity level: {verbosity}")
+
+
+        return self._load_images(path=path, verbosity=verbosity)
+
 
     def set_output_path(self, path):
         """
@@ -150,30 +176,30 @@ class ImageHandler(QWidget):
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
         return True
 
-    def _load_images(self, path: Path=None, verbosity: int=0):
+    def _load_images(self, path: Path="None", verbosity: int=0):
         """
         Load images from a folder into the napari viewer.
         """
         # 0) Update the settings:
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
 
-        if path:
-            if path.exists() and path.is_dir():
-                folder_path = Path(path)
+        if not path == "None":
+            if path.exists() and path.is_dir() and not "find_path" in str(path):
+                folder_path = path
                 if verbosity >= 1:
-                    print(f"Loading images from given path: {folder_path}")
+                    print(f"load_image | Loading images from given path: {folder_path}")
             else:
                 if self.settings.get("input_folder"):
                     folder_path = Path(self.settings.get("input_folder"))
                     if verbosity >= 1:
-                        print(f"No path given, using input_path from settings: {folder_path}")
+                        print(f"load_image | No path given, using input_path from settings: {folder_path}")
                 else:
                     raise ValueError(f"Expected a valid path, but got: {path}. Please provide a valid path or set the input folder in settings.")
 
         else:
             if self.settings.get("folder_prompt"):
-                if not self._select_folder():
-                    return  # user cancelled, so do nothing
+                if not self._select_folder(): ## Dialog canceled
+                    return None
 
             # 2) Make sure we have a path (either from the dialog or pre‐set):
             if not self.settings.get("input_folder"):
@@ -182,6 +208,10 @@ class ImageHandler(QWidget):
                 folder_path = self.settings.get("input_folder")
 
 
+
         img_dir   = Path(folder_path)
         img_paths = sorted(img_dir.iterdir())
-        self.viewer.open(img_paths, plugin=None)
+        image_layers = self.viewer.open(img_paths, layer_type="image", plugin="napari-czi-reader", metadata={"folder_group": img_dir.name})
+        return image_layers
+
+
