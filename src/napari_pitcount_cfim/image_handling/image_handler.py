@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from pathlib import Path
 
+from uuid import UUID
 import napari.layers
 import numpy as np
 from qtpy.QtWidgets import QWidget, QPushButton, QFileDialog
@@ -10,6 +12,23 @@ ACCEPTABLE_SYNONYMS = {
     "meta": "metadata",
 
 }
+
+@dataclass
+class ImageLayerProps:
+    name: str
+    data: np.ndarray
+    unique_id: UUID
+
+    def get(self, prop_name: str):
+        """
+        Get a property from the ImageLayerProps.
+        """
+        if prop_name in ACCEPTABLE_SYNONYMS:
+            prop_name = ACCEPTABLE_SYNONYMS[prop_name]
+        if hasattr(self, prop_name):
+            return getattr(self, prop_name)
+        else:
+            raise AttributeError(f"Property '{prop_name}' not found in ImageLayerProps.")
 
 class ImageHandler(QWidget):
     """
@@ -46,22 +65,25 @@ class ImageHandler(QWidget):
 
     def get_all_images_props(self, props=None):
         """
-            Get all images from the napari viewer with their properties.
+            Get all images from the napari viewer as ImageLayerProps.
         """
-        if props is None:
-            props = ["data", "name", "uuid"]
-
         if not self.viewer.layers:
             raise ValueError("No layers in the viewer.")
 
-        if self.settings_handler.get_settings()["debug_settings"].get("debug"):
-            print(f"Debug | Getting all images with properties: {props}")
+        # filter to image layers
+        image_layers = [
+            layer for layer in self.viewer.layers
+            if isinstance(layer, napari.layers.Image)
+        ]
 
-            # Change synonyms to correct property names
-            props = [ACCEPTABLE_SYNONYMS.get(prop, prop) for prop in props]
-
+        # build dataclass instances
         return [
-            {prop: getattr(layer, prop) for prop in props} for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)
+            ImageLayerProps(
+                name=layer.name,
+                data=layer.data,
+                unique_id=layer.unique_id
+            )
+            for layer in image_layers
         ]
 
     def get_all_labels(self):

@@ -142,6 +142,7 @@ class MainWidget(QWidget):
             if self.verbosity >= 2:
                 print(f"NO GUI | Using provided pit mask folder: {pit_mask_folder}")
             # Load pit masks from the provided folder
+            # TODO: Open using naparis .open() method
             pit_masks = []
             for ext in ["*.npy", "*.tif", "*.czi"]:
                 for pit_mask_file in pit_mask_folder.glob(ext):
@@ -216,8 +217,10 @@ class MainWidget(QWidget):
 
     def _run_cellpose_segmentation(self, image_layers = None):
         """Run Cellpose segmentation on all images using background threads."""
-        if image_layers is None:
+        if image_layers in (None, False):
             layers = self.image_handler.get_all_images_props(["data", "name", "uuid"])
+            self.result_handler.start_result_record_gui(layers)
+            self.result_handler.set_images(layers)
         else:
             layers = image_layers
         total = len(layers)
@@ -325,11 +328,12 @@ class MainWidget(QWidget):
         self.model_user = ModelUser(model_folder=settings["model_folder"], prediction_settings=settings)
 
 
-        images = self.image_handler.get_all_images_props(["data", "name", "uuid"])
+        image_layers = self.image_handler.get_all_images_props(["data", "name", "uuid"])
+        self.result_handler.start_result_record_gui(image_layers)
 
         if gui:
             self.progress_bar.setMinimum(0)
-            self.progress_bar.setMaximum(len(images))
+            self.progress_bar.setMaximum(len(image_layers))
             self.progress_bar.setValue(0)
 
             self.ml_button.setEnabled(False)
@@ -338,10 +342,10 @@ class MainWidget(QWidget):
         predictions = []
         completed = 0
 
-        for image in images:
-            data = image["data"]
-            name = image["name"]
-            unique_id = image["unique_id"]
+        for layer in image_layers:
+            data = layer.get("data")
+            name = layer.get("name")
+            unique_id = layer.get("unique_id")
             prediction = self.model_user.predict_from_npy(data)
 
             completed += 1
@@ -351,7 +355,7 @@ class MainWidget(QWidget):
             else:
                 predictions.append(prediction)
                 if self.verbosity >= 1:
-                    print(f"Completed {completed}/{len(images)} images.")
+                    print(f"Completed {completed}/{len(image_layers)} images.")
             self.result_handler.set_pit_mask(image_uuid=unique_id, pit_mask=prediction)
         if gui:
             self.ml_button.setEnabled(True)

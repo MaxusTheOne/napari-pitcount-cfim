@@ -4,10 +4,14 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-import matplotlib.pyplot as plt  # for graphing
+# removed unused plt import
+from napari.utils.notifications import show_warning
 from qtpy.QtWidgets import QWidget, QFileDialog, QPushButton
 from skimage import measure
 from skimage.measure import regionprops
+
+from napari_pitcount_cfim.image_handling.image_handler import ImageLayerProps
+from napari_pitcount_cfim.result_handling.graphs import simple_graph, modern_graph
 
 # DEFAULTS
 MIN_RESULTS_OR_SPLIT = 3
@@ -73,7 +77,13 @@ class ResultHandler(QWidget):
 
     def create_and_save_results(self, output_path: str = None, family_grouping: str = "Default"):
 
+        # legacy: if passed a dict of results, output simple text files
+        if isinstance(output_path, dict):
+            return self._output_results(results=output_path)
+
         settings = self.settings_handler.get_updated_settings().get("file_settings", {})
+        if not output_path:
+            output_path = settings.get("output_folder", "find_path")
         if family_grouping == "Default":
             family_grouping = settings.get("family_grouping", "Default").lower()
         else:
@@ -140,9 +150,11 @@ class ResultHandler(QWidget):
             stats.append(group_stats)
             self._save_statistics(stats, output_path=stats_file)
 
-        # generate and save graph of average pits vs percent with pits
+        # generate graph if stats exist
         if stats:
-            # determine graph data: fallback to per-file if too few groups for folder grouping
+            # choose graph style from settings (simple or modern)
+            graph_style = settings.get('graph_style', 'modern').lower()
+            # determine graph data: fallback to per-file if too few folders
             if family_grouping == 'folder' and len(stats) <= MIN_RESULTS_OR_SPLIT:
                 graph_label = 'file'
                 graph_groups = list(image_stats.keys())
@@ -153,17 +165,11 @@ class ResultHandler(QWidget):
                 graph_groups = [s['group'] for s in stats]
                 avg_vals = [s['pits_per_cell_avg'] for s in stats]
                 pct_vals = [s['cells_with_pits_percent'] for s in stats]
-            plt.figure()
-            plt.scatter(avg_vals, pct_vals)
-            for i, label in enumerate(graph_groups):
-                plt.annotate(label, (avg_vals[i], pct_vals[i]))
-            plt.xlabel('Average pits per cell')
-            plt.ylabel('Cells with pits (%)')
-            plt.title(f'Statistics ({graph_label})')
-            graph_path = Path(self.output) / f'stats_graph_{graph_label}.png'
-            plt.savefig(graph_path)
-            plt.close()
-            print(f"Graph saved to {graph_path}")
+            # call the selected graph function
+            if graph_style == 'modern':
+                modern_graph(graph_label, avg_vals, pct_vals, graph_groups, self.output)
+            else:
+                simple_graph(graph_label, avg_vals, pct_vals, graph_groups, self.output)
 
         return stats
 
@@ -242,6 +248,23 @@ class ResultHandler(QWidget):
             raise ValueError("Image UUID must be a UUID")
         self._results[image_uuid] = {"image_name": image_name,"folder_group":folder_group ,"image_data": None, "pit_masks": None, "cell_masks": None}
 
+    def start_result_record_gui(self, layers: list[ImageLayerProps], strict=False):
+        """
+            Start recording results for a new image using GUI layers.
+            Expects layers to be a list of ImageLayerProps with unique UUIDs.
+        """
+        if not isinstance(layers, list):
+            raise ValueError("Layers must be a list of ImageLayerProps")
+        for layer in layers:
+            if not isinstance(layer, ImageLayerProps):
+                raise ValueError("Each layer must be an instance of ImageLayerProps")
+            if layer.unique_id in self._results:
+                if strict:
+                    raise ValueError(f"Image UUID {layer.unique_id} already exists in results.")
+                else:
+                    continue
+            self.start_result_record(layer.unique_id, layer.name)
+
     def get_valid_results(self) -> dict:
         """
             Get results that have all required fields set.
@@ -256,7 +279,7 @@ class ResultHandler(QWidget):
                     print(f"Debug | result_handler | Skipping result for {image_uuid} due to missing fields.")
         return valid_results
 
-    def set_image(self, image_uuid: uuid.UUID, image_data: np.ndarray):
+    def set_image(self, image_uuid: uuid.UUID, image_data: np.ndarray, strict: bool = False):
         """
             Set the image data for a specific image UUID.
             Expects image_data to be a numpy array.
@@ -267,9 +290,28 @@ class ResultHandler(QWidget):
             raise ValueError("Image data must be a numpy array")
         if image_uuid not in self._results:
             raise KeyError(f"Image UUID {image_uuid} not found in results.")
+        if self._results[image_uuid]["image_data"] is not None:
+            if strict:
+                raise ValueError(f"set_image | Strict | Image UUID {image_uuid} already has image data set")
+            else:
+                show_warning("Image data already set for this UUID. Overwriting it.")
         self._results[image_uuid]["image_data"] = image_data
 
-    def set_pit_mask(self, image_uuid: uuid.UUID, pit_mask: np.ndarray):
+    def set_images(self, image_layers: list[ImageLayerProps], strict: bool = False):
+        """
+            Set the image data for multiple images using a list of ImageLayerProps.
+            Expects image_layers to be a list of ImageLayerProps with unique UUIDs.
+        """
+        if not isinstance(image_layers, list):
+            raise ValueError("Image layers must be a list of ImageLayerProps")
+        for layer in image_layers:
+            if not isinstance(layer, ImageLayerProps):
+                raise ValueError("Each layer must be an instance of ImageLayerProps")
+            self.set_image(layer.unique_id, layer.data, strict=strict)
+
+
+
+    def set_pit_mask(self, image_uuid: uuid.UUID, pit_mask: np.ndarray, strict: bool = False):
         """
             Set the pit mask for a specific image UUID.
             Expects pit_mask to be a numpy array.
@@ -280,6 +322,11 @@ class ResultHandler(QWidget):
             raise ValueError("Pit mask must be a numpy array")
         if image_uuid not in self._results:
             raise KeyError(f"Image UUID {image_uuid} not found in results.")
+        if self._results[image_uuid]["pit_masks"] is not None:
+            if strict:
+                raise ValueError(f"set_pit_mask | Strict | Image UUID {image_uuid} already has pit mask set")
+            else:
+                show_warning("Pit mask already set for this UUID. Overwriting it.")
         self._results[image_uuid]["pit_masks"] = pit_mask
 
     def set_pit_mask_by_name(self, image_name: str, pit_mask: np.ndarray):
@@ -305,7 +352,7 @@ class ResultHandler(QWidget):
 
         return self._results[image_uuid].get("image_name", "Unknown Image Name")
 
-    def set_cell_mask(self, image_uuid: uuid.UUID, cell_mask: np.ndarray):
+    def set_cell_mask(self, image_uuid: uuid.UUID, cell_mask: np.ndarray, strict: bool = False):
         """
             Set the cell mask for a specific image UUID.
             Expects cell_mask to be a numpy array.
@@ -316,6 +363,11 @@ class ResultHandler(QWidget):
             raise ValueError("Cell mask must be a numpy array")
         if image_uuid not in self._results:
             raise KeyError(f"Image UUID {image_uuid} not found in results.")
+        if self._results[image_uuid]["cell_masks"] is not None:
+            if strict:
+                raise ValueError(f"set_cell_mask | Strict | Image UUID {image_uuid} already has cell mask set")
+            else:
+                show_warning("Cell mask already set for this UUID. Overwriting it.")
         self._results[image_uuid]["cell_masks"] = cell_mask
 
     def dump_results(self):
