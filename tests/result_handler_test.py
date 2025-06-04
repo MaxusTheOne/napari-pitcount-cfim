@@ -1,5 +1,5 @@
 import pytest
-from PyQt5.QtWidgets import QApplication
+from qtpy import QApplication
 
 from napari_pitcount_cfim.result_handling.result_handler import ResultHandler
 

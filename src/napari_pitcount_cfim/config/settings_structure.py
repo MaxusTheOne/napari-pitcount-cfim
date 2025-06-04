@@ -70,7 +70,7 @@ class CFIMSettings(BaseModel):
 
         Update the version number here after a change.
     """
-    __version__: str = "0.9.3"
+    __version__: str = "1.0.0"
 
     version: str = Field(default=__version__)
     automation_settings: AutomationSettings = AutomationSettings()

@@ -48,7 +48,7 @@ def family_setting(value):
         raise argparse.ArgumentTypeError(f"Invalid value for result grouping: {value}. Must be one of 'default', 'file', 'folder', or 'all'.")
 
 
-if __name__ == "__main__":
+def main():
     faulthandler.enable()
     # Setup argparse for handling dev mode
     parser = argparse.ArgumentParser(description="Start the Napari plugin with optional dev mode. Expects the plugin to be installed.")
@@ -108,3 +108,6 @@ if __name__ == "__main__":
         launch_napari_dev_mode(mode='dev' if args.dev else 'no-gui')
     else:
         launch_napari()
+
+if __name__ == "__main__":
+    main()

@@ -382,10 +382,6 @@ class ResultHandler(QWidget):
         self.results["pit_masks"] = result_array_dict["pit_masks"]
         self.results["cell_masks"] = result_array_dict["cell_masks"]
 
-
-        print(f"Dev | Set {len(self.results['images'])} images, {len(self.results['pit_masks'])} pit masks, and {len(self.results['cell_masks'])} cell masks.")
-
-
     def filter_pit_to_cells(self, cell_mask: np.ndarray, pit_data):
         """
         Assign pits to the cell in which their centroid falls.

@@ -132,7 +132,6 @@ class ImageHandler(QWidget):
         """
         path = Path(load_settings.get("input_folder", "find_path"))
         verbosity = load_settings.get("verbosity", 0)
-        print(f"Dev | Loading images from path: {path} with verbosity level: {verbosity}")
 
 
         return self._load_images(path=path, verbosity=verbosity)
@@ -183,7 +182,7 @@ class ImageHandler(QWidget):
         # 0) Update the settings:
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
 
-        if not path == "None":
+        if not path in ("None", None, False):
             if path.exists() and path.is_dir() and not "find_path" in str(path):
                 folder_path = path
                 if verbosity >= 1:
