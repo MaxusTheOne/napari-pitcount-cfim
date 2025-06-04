@@ -186,9 +186,10 @@ class ImageHandler(QWidget):
                 folder_path = self.settings.get("input_folder")
 
 
+
         img_dir   = Path(folder_path)
         img_paths = sorted(img_dir.iterdir())
-        image_layers = self.viewer.open(img_paths, layer_type="image", plugin="napari-czi-reader")
+        image_layers = self.viewer.open(img_paths, layer_type="image", plugin="napari-czi-reader", metadata={"folder_group": img_dir.name})
         return image_layers
 
 

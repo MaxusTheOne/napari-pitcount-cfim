@@ -41,6 +41,12 @@ def launch_napari():
         print("Napari is not installed. Please install it by running 'pip install napari[all]'")
         exit(1)
 
+def family_setting(value):
+    if value.lower() in ['default', 'file', 'folder', 'all']:
+        return value.lower()
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid value for result grouping: {value}. Must be one of 'default', 'file', 'folder', or 'all'.")
+
 
 if __name__ == "__main__":
     faulthandler.enable()
@@ -67,6 +73,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save-raw-data", action="store_true", help="Save raw data to the output folder. Only works in non-GUI mode."
     )
+    parser.add_argument(
+        "--family-grouping", type=family_setting, default="default", help="Set the result grouping strategy. Options: 'default', 'file', 'folder', 'all'. Default is 'default'."
+    )
     args = parser.parse_args()
 
     # enforce dependency
@@ -83,6 +92,7 @@ if __name__ == "__main__":
         os.environ["PITCOUNT_CFIM_OUTPUT_FOLDER"] = args.output_folder or ""
         os.environ["PITCOUNT_CFIM_VERBOSITY"] = str(args.verbosity or 0)
         os.environ["PITCOUNT_CFIM_SAVE_RAW_DATA"] = "1" if args.save_raw_data else "0"
+        os.environ["PITCOUNT_CFIM_FAMILY_GROUPING"] = args.family_grouping
 
         if args.pit_mask_folder != "None":
             if not args.pit_mask_folder.exists():

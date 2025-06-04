@@ -1,6 +1,7 @@
 import os
 import sys
 import traceback
+from pprint import pprint
 from uuid import UUID
 from pathlib import Path
 from tkinter.messagebox import showinfo
@@ -114,25 +115,22 @@ class MainWidget(QWidget):
         input_path = os.getenv("PITCOUNT_CFIM_INPUT_FOLDER", "find_path")
         output_folder = os.getenv("PITCOUNT_CFIM_OUTPUT_FOLDER", "find_path")
         verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
-        save_raw = True if os.getenv("PITCOUNT_CFIM_SAVE_RAW", "0") == "1" else False
+        save_raw = os.getenv("PITCOUNT_CFIM_SAVE_RAW_DATA", "0") == "1"
+        dry_run = os.getenv("PITCOUNT_CFIM_DRY_RUN", "0") == "1"
+        family_grouping = os.getenv("PITCOUNT_CFIM_FAMILY_GROUPING", "default")
 
 
         image_layers = self.image_handler.load_images({"input_folder": input_path, "verbosity": verbosity})
-        print(f"Dev | Layer count: {len(image_layers)} | type: {type(image_layers)}")
         for layer in image_layers:
-            print(f"Dev | Layer type: {type(layer)} | props: {dir(layer)}")
-            print(f"Dev | Layer id: {layer.unique_id}")
             image_uuid = layer.unique_id
-            self.result_handler.start_result_record(image_uuid=image_uuid, image_name=layer.name)
+            self.result_handler.start_result_record(image_uuid=image_uuid, image_name=layer.name, folder_group=layer.metadata.get("folder_group", "default"))
             self.result_handler.set_image(image_uuid ,layer.data)
 
         if self.verbosity >= 2:
-            print(f"NO GUI | Loaded {len(self.image_handler.get_all_images())} images")
+            print(f"NO GUI | Loaded {len(image_layers)} images")
         # Run Cellpose analysis
         self._run_cellpose_segmentation(image_layers=image_layers)
-        segmentation_masks = self.image_handler.get_all_labels()
-
-        # Skip ml if mask args are provided
+        #region: Pit masks
         pit_mask_folder = os.getenv("PITCOUNT_CFIM_PIT_MASK_FOLDER", "None")
 
         if pit_mask_folder != "None":
@@ -145,37 +143,34 @@ class MainWidget(QWidget):
                 print(f"NO GUI | Using provided pit mask folder: {pit_mask_folder}")
             # Load pit masks from the provided folder
             pit_masks = []
-            for pit_mask_file in pit_mask_folder.glob("*.npy"):
-                pit_mask = np.load(pit_mask_file)
-                pit_masks.append(pit_mask)
-            for pit_mask_file in pit_mask_folder.glob("*.tif"):
-                pit_mask = np.load(pit_mask_file)
-                pit_masks.append(pit_mask)
-            for pit_mask_file in pit_mask_folder.glob("*.czi"):
-                pit_mask = czifile.imread(pit_mask_file)
-
-                pit_masks.append(np.squeeze(pit_mask))
+            for ext in ["*.npy", "*.tif", "*.czi"]:
+                for pit_mask_file in pit_mask_folder.glob(ext):
+                    if ext == "*.czi":
+                        pit_mask = np.squeeze(czifile.imread(pit_mask_file))
+                    else:
+                        pit_mask = np.load(pit_mask_file)
+                    pit_masks.append(pit_mask)
+                    file_name = pit_mask_file.stem
+                    name = self.result_handler.set_pit_mask_by_name(file_name, pit_mask)
+                    if self.verbosity >= 2:
+                        print(f"NO GUI | Loaded pit mask '{file_name}' and associated it with image '{name}'.")
 
             if self.verbosity >= 2:
                 print(f"NO GUI | Loaded {len(pit_masks)} pit masks from {pit_mask_folder}")
         else:
             # Pit finder ml
             model_folder = os.getenv("PITCOUNT_CFIM_MODEL_FOLDER", None)
-            pit_masks = self._run_ml_analysis(model_folder)
+            self._run_ml_analysis(model_folder)
             if self.verbosity >= 2:
-                print(f"NO GUI | Completed ML for {len(self.image_handler.get_all_labels()) - len(segmentation_masks)} images")
+                print(f"NO GUI | Completed ML")
+        #endregion
 
-        image_data = self.image_handler.get_all_images_props(["data", "name", "uuid"])
         # Results handling
-        if self.verbosity >= 2:
-            print(f"NO GUI | Saving results for {len(image_data)} images, {len(segmentation_masks)} segmentation masks, and {len(pit_masks)} pit masks.")
-            print(f"NO GUI | Sizes: images={image_data[0].get('data').shape if image_data else 'N/A'}, segmentation_masks={segmentation_masks[0].shape if segmentation_masks else 'N/A'}, pit_masks={pit_masks[0].shape if pit_masks else 'N/A'}")
 
 
-        self.result_handler.set_result_layers({"images": image_data, "cell_masks": segmentation_masks, "pit_masks": pit_masks})
         self.result_handler.set_raw_setting(save_raw)
 
-        self.result_handler.output_results(output_folder)
+        self.result_handler.create_and_save_results(output_folder, family_grouping=family_grouping)
 
         print("NO GUI | Pipeline completed successfully.")
         sys.exit(0)
@@ -357,6 +352,7 @@ class MainWidget(QWidget):
                 predictions.append(prediction)
                 if self.verbosity >= 1:
                     print(f"Completed {completed}/{len(images)} images.")
+            self.result_handler.set_pit_mask(image_uuid=unique_id, pit_mask=prediction)
         if gui:
             self.ml_button.setEnabled(True)
         return predictions

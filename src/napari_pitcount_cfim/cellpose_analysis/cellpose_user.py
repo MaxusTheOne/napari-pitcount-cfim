@@ -57,8 +57,6 @@ class CellposeUser:
             "tile_norm_smooth3D": 1,
             "invert": False
         }
-        if self.cellpose_settings.get("debug", False):
-            print(f"Debug | Cellpose settings: {self.cellpose_settings}")
 
         try:
             self.model = models.Cellpose(

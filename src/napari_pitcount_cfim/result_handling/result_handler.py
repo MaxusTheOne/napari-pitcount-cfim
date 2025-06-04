@@ -2,13 +2,15 @@
 import json
 import uuid
 from pathlib import Path
-from pprint import pprint
 
 import numpy as np
+import matplotlib.pyplot as plt  # for graphing
 from qtpy.QtWidgets import QWidget, QFileDialog, QPushButton
 from skimage import measure
-from skimage.measure import label, regionprops
+from skimage.measure import regionprops
 
+# DEFAULTS
+MIN_RESULTS_OR_SPLIT = 3
 
 class ResultHandler(QWidget):
     """
@@ -40,7 +42,7 @@ class ResultHandler(QWidget):
 
     def init_output_button_ui(self):
         self.output_button = QPushButton("Get results")
-        self.output_button.clicked.connect(self.output_results)
+        self.output_button.clicked.connect(self.create_and_save_results)
 
 
         return self.output_button
@@ -69,42 +71,120 @@ class ResultHandler(QWidget):
         self.settings["save_raw_data"] = value
 
 
-    def output_results(self, output_path: str = None):
+    def create_and_save_results(self, output_path: str = None, family_grouping: str = "Default"):
 
+        settings = self.settings_handler.get_updated_settings().get("file_settings", {})
+        if family_grouping == "Default":
+            family_grouping = settings.get("family_grouping", "Default").lower()
+        else:
+            family_grouping = family_grouping.lower()
         if not output_path == "find_path":
             self.set_output_path(output_path)
             print(f"Results | Output set to {self.output}")
 
-
-        images, pit_masks, cell_masks = self.results.get("images"), self.results.get("pit_masks"), self.results.get("cell_masks")
-
-        print(f"Dev | Outputting results to {self.output}...")
-        pits_cords, total = self.count_pits_list(pit_masks)
-        print(f"Dev | Found {total} pits in the pit masks.\n Full pit data: {pits_cords}")
+        results = self.get_valid_results()
+        # precompute per-image statistics for fallback graph
+        image_stats = {}
+        for data in results.values():
+            name = data['image_name']
+            pits = self._extract_pits_from_mask(data['pit_masks'])
+            cells = self.filter_pit_to_cells(pit_data=pits, cell_mask=data['cell_masks'])
+            image_stats[name] = self._generate_statistics(cells)
 
         stats = []
+        # compute and save grouped statistics
+        grouped_cells = {}
+        names_by_group = {}
+        for data in results.values():
+            image_name = data["image_name"]
+            group_key = None
+            if family_grouping in ("folder",):
+                group_key = data.get("folder_group") or "Default"
+            elif family_grouping in ("analysis", "all"):
+                group_key = "all"
+            else:  # file or default
+                group_key = image_name
 
-        for i in range(len(images)):
+            # extract and assign pits to cells
+            pits = self._extract_pits_from_mask(data["pit_masks"])
+            cells = self.filter_pit_to_cells(pit_data=pits, cell_mask=data["cell_masks"])
+            grouped_cells.setdefault(group_key, []).append(cells)
+            names_by_group.setdefault(group_key, []).append(image_name)
 
-            image_name = images[i].get("name", f"image_{i}")
+        # compute and save grouped statistics
+        for group, cell_lists in grouped_cells.items():
+            # aggregate stats
+            total_cells = sum(len(c) for c in cell_lists)
+            total_pits = sum(sum(len(d["pits"]) for d in c.values()) for c in cell_lists)
+            cells_with_pits = sum(sum(1 for d in c.values() if len(d["pits"])>0) for c in cell_lists)
+            avg_pits = total_pits / total_cells if total_cells else 0.0
+            pct_with = (cells_with_pits/total_cells*100) if total_cells else 0.0
+            group_stats = {
+                "group": family_grouping + " / " + group,
+                "total_cells": total_cells,
+                "total_pits": total_pits,
+                "pits_per_cell_avg": avg_pits,
+                "cells_with_pits": cells_with_pits,
+                "cells_with_pits_percent": pct_with
+            }
 
-            cell_results = self.create_cell_pit_results(pit_data=pits_cords[i], cell_mask=cell_masks[i])
-            summary_stats = self._generate_statistics(cell_results)
-
+            # save raw data if enabled
             if self.settings.get("save_raw_data"):
-                raw_path = Path(self.output) / f"raw_data_{image_name}_{i}.json"
-                with open(raw_path, "w") as f:
-                    json.dump(cell_results, f, indent=2)
+                raw_path = Path(self.output) / f"raw_data_{group}.json"
+                raw_dict = {name: cells for name, cells in zip(names_by_group[group], cell_lists)}
+                with open(raw_path, "w", encoding="utf-8") as f:
+                    json.dump(raw_dict, f, indent=2)
 
+            # save stats
+            stats_file = Path(self.output) / f"stats_{group}.json"
+            stats.append(group_stats)
+            self._save_statistics(stats, output_path=stats_file)
 
-            # Optional: save per-image stats as .npy or .txt
-            stats_file = Path(self.output) / f"stats_{image_name}_{i}.npy"
-            # write to file
-            stats.append({"image_name": image_name, **summary_stats})
-            with open(stats_file, "w", encoding="utf - 8") as f:
-                json.dump(summary_stats, f, indent=2)
-            print(f"Saved summary stats to {stats_file}")
+        # generate and save graph of average pits vs percent with pits
+        if stats:
+            # determine graph data: fallback to per-file if too few groups for folder grouping
+            if family_grouping == 'folder' and len(stats) <= MIN_RESULTS_OR_SPLIT:
+                graph_label = 'file'
+                graph_groups = list(image_stats.keys())
+                avg_vals = [image_stats[g]['pits_per_cell_avg'] for g in graph_groups]
+                pct_vals = [image_stats[g]['cells_with_pits_percent'] for g in graph_groups]
+            else:
+                graph_label = family_grouping
+                graph_groups = [s['group'] for s in stats]
+                avg_vals = [s['pits_per_cell_avg'] for s in stats]
+                pct_vals = [s['cells_with_pits_percent'] for s in stats]
+            plt.figure()
+            plt.scatter(avg_vals, pct_vals)
+            for i, label in enumerate(graph_groups):
+                plt.annotate(label, (avg_vals[i], pct_vals[i]))
+            plt.xlabel('Average pits per cell')
+            plt.ylabel('Cells with pits (%)')
+            plt.title(f'Statistics ({graph_label})')
+            graph_path = Path(self.output) / f'stats_graph_{graph_label}.png'
+            plt.savefig(graph_path)
+            plt.close()
+            print(f"Graph saved to {graph_path}")
+
         return stats
+
+    def _save_statistics(self, stats: list, output_path: str | Path = None):
+        """
+            Save statistics to the output folder.
+            Expects stats to be a list of dictionaries with summary statistics.
+        """
+
+        if not isinstance(stats, list):
+            raise ValueError("Stats must be a list of dictionaries.")
+        if isinstance(output_path, str):
+            output_path = Path(output_path)
+
+        output_folder = output_path.parent
+        output_folder.mkdir(parents=False, exist_ok=True)
+
+        stats_file = output_path
+        with open(stats_file, "w", encoding="utf-8") as f:
+            json.dump(stats, f, indent=2)
+        print(f"Statistics saved to {stats_file}")
 
 
     def save_raw_data_to_output(self, raw_data: dict, image_name: str = "raw_image"):
@@ -151,7 +231,8 @@ class ResultHandler(QWidget):
         else:
             self.results[result_type].append(data)
 
-    def start_result_record(self, image_uuid, image_name):
+    #region Strict result handling
+    def start_result_record(self, image_uuid, image_name, folder_group=None):
         """
             Start recording results for a new image.
             Expects image_uuid and image_name to be unique identifiers for the image.
@@ -159,7 +240,21 @@ class ResultHandler(QWidget):
 
         if not isinstance(image_uuid, uuid.UUID):
             raise ValueError("Image UUID must be a UUID")
-        self._results[image_uuid] = {"image_name": image_name, "image_data": None, "pit_masks": None, "cell_masks": None}
+        self._results[image_uuid] = {"image_name": image_name,"folder_group":folder_group ,"image_data": None, "pit_masks": None, "cell_masks": None}
+
+    def get_valid_results(self) -> dict:
+        """
+            Get results that have all required fields set.
+            Returns a dictionary with image UUIDs as keys and their data as values.
+        """
+        valid_results = {}
+        for image_uuid, data in self._results.items():
+            if data["image_data"] is not None and data["pit_masks"] is not None and data["cell_masks"] is not None:
+                valid_results[image_uuid] = data
+            else:
+                if self.debug:
+                    print(f"Debug | result_handler | Skipping result for {image_uuid} due to missing fields.")
+        return valid_results
 
     def set_image(self, image_uuid: uuid.UUID, image_data: np.ndarray):
         """
@@ -187,6 +282,29 @@ class ResultHandler(QWidget):
             raise KeyError(f"Image UUID {image_uuid} not found in results.")
         self._results[image_uuid]["pit_masks"] = pit_mask
 
+    def set_pit_mask_by_name(self, image_name: str, pit_mask: np.ndarray):
+        """
+            Set the pit mask for a specific image name.
+            Expects pit_mask to be a numpy array.
+        """
+        if not isinstance(image_name, str):
+            raise ValueError("Image name must be a string")
+        if not isinstance(pit_mask, np.ndarray):
+            raise ValueError("Pit mask must be a numpy array")
+        ## If image_name ends in _label, remove it
+        if image_name.endswith("_label"):
+            image_name = image_name[:-6]
+
+
+        # Find the UUID by image name
+        image_uuid = next((uuid for uuid, data in self._results.items() if image_name in data["image_name"]), None)
+        if image_uuid is None:
+            raise KeyError(f"Image name {image_name} not found in results: {list(self._results.keys())}")
+
+        self._results[image_uuid]["pit_masks"] = pit_mask
+
+        return self._results[image_uuid].get("image_name", "Unknown Image Name")
+
     def set_cell_mask(self, image_uuid: uuid.UUID, cell_mask: np.ndarray):
         """
             Set the cell mask for a specific image UUID.
@@ -200,9 +318,10 @@ class ResultHandler(QWidget):
             raise KeyError(f"Image UUID {image_uuid} not found in results.")
         self._results[image_uuid]["cell_masks"] = cell_mask
 
+    def dump_results(self):
+        return self._results
 
-
-
+    #endregion
 
     def set_result_layers(self, result_array_dict: dict[str, np.ndarray]):
         if not all(k in result_array_dict for k in ("images", "pit_masks", "cell_masks")):
@@ -214,7 +333,8 @@ class ResultHandler(QWidget):
 
         print(f"Dev | Set {len(self.results['images'])} images, {len(self.results['pit_masks'])} pit masks, and {len(self.results['cell_masks'])} cell masks.")
 
-    def create_cell_pit_results(self, cell_mask: np.ndarray, pit_data):
+
+    def filter_pit_to_cells(self, cell_mask: np.ndarray, pit_data):
         """
         Assign pits to the cell in which their centroid falls.
 

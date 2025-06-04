@@ -19,7 +19,7 @@ def test_output_results_creates_files(tmp_path, qapp):
         "test": {"value": 123},
         "another": {"value": "abc"}
     }
-    handler.output_results(dummy_results)
+    handler.create_and_save_results(dummy_results)
 
     # Verify the output files are created and contain expected content
     test_file = tmp_path / "test.txt"
@@ -46,4 +46,4 @@ def test_output_results_no_output_path(qapp):
     handler = ResultHandler(prompt_for_folder=False)
     dummy_results = {"test": {"value": 123}}
     with pytest.raises(ValueError):
-        handler.output_results(dummy_results)
+        handler.create_and_save_results(dummy_results)
