@@ -17,7 +17,7 @@ def get_default_model_folder() -> str:
 
 class DebugSettings(BaseModel):
     """
-    Settings for debugging.
+        Settings for debugging.
     """
     debug: bool = Field(default=False)
     verbosity_level: int = Field(default=1)
@@ -43,7 +43,7 @@ class FileSettings(BaseModel):
 
 class CellposeSettings(BaseModel):
     """
-    Settings for the Cellpose segmentation.
+        Settings for the Cellpose segmentation.
     """
     diameter: Optional[float] = Field(default=None
                             , description="Diameter of the cells in pixels. If None, Cellpose will estimate it.")
@@ -57,7 +57,7 @@ class CellposeSettings(BaseModel):
 
 class ModelSettings(BaseModel):
     """
-    Settings for analysis model.
+        Settings for analysis model.
     """
     model: str = Field(default="unused", description="Model name. (unused)")
     model_folder: str = Field(default="none", description="Path to the folder containing a model.joblib and transformer.joblib file.")
@@ -69,6 +69,9 @@ class CFIMSettings(BaseModel):
         Settings for the napari pitcount CFIM plugin.
 
         Update the version number here after a change.
+
+        ## TODO: add graph settings
+        ## TODO: add all cellpose settings
     """
     __version__: str = "1.0.0"
 

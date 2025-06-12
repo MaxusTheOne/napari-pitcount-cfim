@@ -131,7 +131,8 @@ class MainWidget(QWidget):
 
         if self.verbosity >= 2:
             print(f"NO GUI | Loaded {len(image_layers)} images")
-        # Run Cellpose analysis
+
+        ## Run Cellpose analysis
         self._run_cellpose_segmentation(image_layers=image_layers)
         #region: Pit masks
         pit_mask_folder = os.getenv("PITCOUNT_CFIM_PIT_MASK_FOLDER", "None")
@@ -194,7 +195,6 @@ class MainWidget(QWidget):
         """
         path = Path(__file__).parent.parent / "resources" / "logo" / "CFIM_logo_small.png"
         logo_label = QLabel()
-        print(f"Dev | Adding logo from {path}")
         logo_label.setText(f"<img src='{path}' width='320'/>")
         self.layout().addWidget(logo_label)
 
@@ -280,7 +280,7 @@ class MainWidget(QWidget):
                         print("Cellpose analysis completed for all images.")
                     self._event_loop.quit()
 
-        # Launch a worker thread for each image to run Cellpose in parallel
+        ## Thread worker assignment.
         for layer in layers:
             data = layer.data
             name = layer.name

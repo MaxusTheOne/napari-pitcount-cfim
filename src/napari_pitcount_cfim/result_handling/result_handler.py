@@ -79,10 +79,11 @@ class ResultHandler(QWidget):
 
 
     def create_and_save_results(self, output_path: str = None, family_grouping: str = "Default"):
-
-        # legacy: if passed a dict of results, output simple text files
-        if isinstance(output_path, dict):
-            return self._output_results(results=output_path)
+        """
+            Create and save results based on the current settings and results.
+            Expects output_path to be a path as a String.
+            Expects family_grouping to be one of "Default", "file", "folder", "analysis", or "all".
+        """
 
         settings = self.settings_handler.get_updated_settings().get("file_settings", {})
         if not output_path:
@@ -96,7 +97,7 @@ class ResultHandler(QWidget):
             print(f"Results | Output set to {self.output}")
 
         results = self.get_valid_results()
-        # precompute per-image statistics for fallback graph
+        # precompute per-image statistics for fallback option
         image_stats = {}
         for data in results.values():
             name = data['image_name']
@@ -105,12 +106,11 @@ class ResultHandler(QWidget):
             image_stats[name] = self._generate_statistics(cells)
 
         stats = []
-        # compute and save grouped statistics
         grouped_cells = {}
         names_by_group = {}
         for data in results.values():
             image_name = data["image_name"]
-            group_key = None
+
             if family_grouping in ("folder",):
                 group_key = data.get("folder_group") or "Default"
             elif family_grouping in ("analysis", "all"):
@@ -124,9 +124,9 @@ class ResultHandler(QWidget):
             grouped_cells.setdefault(group_key, []).append(cells)
             names_by_group.setdefault(group_key, []).append(image_name)
 
-        # compute and save grouped statistics
+        ## Statistic grouping
         for group, cell_lists in grouped_cells.items():
-            # aggregate stats
+
             total_cells = sum(len(c) for c in cell_lists)
             total_pits = sum(sum(len(d["pits"]) for d in c.values()) for c in cell_lists)
             cells_with_pits = sum(sum(1 for d in c.values() if len(d["pits"])>0) for c in cell_lists)
@@ -141,7 +141,6 @@ class ResultHandler(QWidget):
                 "cells_with_pits_percent": pct_with
             }
 
-            # save raw data if enabled
             if self.settings.get("save_raw_data"):
                 raw_path = Path(self.output) / f"raw_data_{group}.json"
                 raw_dict = {name: cells for name, cells in zip(names_by_group[group], cell_lists)}
@@ -155,11 +154,10 @@ class ResultHandler(QWidget):
         self._save_statistics_csv(stats, output_path=file_path)
         show_info(f"data saved to {self.output}")
 
-        # generate graph if stats exist
         if stats:
-            # choose graph style from settings (simple or modern)
+
             graph_style = settings.get('graph_style', 'modern').lower()
-            # determine graph data: fallback to per-file if too few folders
+            ## Select label and fallback if needed
             if family_grouping == 'folder' and len(stats) <= MIN_RESULTS_OR_SPLIT:
                 graph_label = 'file'
                 graph_groups = list(image_stats.keys())
@@ -170,7 +168,9 @@ class ResultHandler(QWidget):
                 graph_groups = [s['group'] for s in stats]
                 avg_vals = [s['pits_per_cell_avg'] for s in stats]
                 pct_vals = [s['cells_with_pits_percent'] for s in stats]
-            # call the selected graph function
+
+
+            ## Select graph style
             if graph_style == 'modern':
                 graph = modern_graph(graph_label, avg_vals, pct_vals, graph_groups, self.output)
                 # add graph to napari viewer

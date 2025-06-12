@@ -9,8 +9,11 @@ from napari_pitcount_cfim.pitcounter.transformers import czi_to_fmap, npy_to_fma
 
 
 class ModelUser:
+    """
+        A class for using a given model for pit-segmentation.
+    """
+
     def __init__(self, model_folder: str | Path, prediction_settings: dict | None = None):
-        # Initialize attributes to satisfy IDE
         self.model_file_dir: Path | None = None
         self.model_file: Path | None = None
         self.transformer_file: Path | None = None
@@ -20,7 +23,8 @@ class ModelUser:
 
         self.transformer = None
         self.classifier_model = None
-        # Initialize from folder
+
+
         self.set_from_folder(model_folder)
 
     def predict_from_npy(self, image_array, resize_to=None):
@@ -43,7 +47,6 @@ class ModelUser:
 
         # TODO: Unify flattening
         H, W, C = feat_map.shape
-        # Flatten and transform features
         X = feat_map.reshape(-1, C)
         X = transformer.transform(X)
 
@@ -59,7 +62,7 @@ class ModelUser:
 
     def set_from_folder(self, model_folder: str | Path):
         """
-        Set model_file, transformer_file, and meta on self from the given folder.
+            Set model_file, transformer_file, and meta on self from the given folder.
         """
         folder = Path(model_folder)
         self.model_file_dir = folder
@@ -81,8 +84,8 @@ class ModelUser:
 
     def _unpack_model_folder(self, model_folder: str | Path) -> tuple[Path, Path, dict]:
         """
-        Identify and load model file, transformer file, and metadata from a folder.
-        Returns (model_file, transformer_file, meta_dict).
+            Identify and load model file, transformer file, and metadata from a folder.
+            Returns (model_file, transformer_file, meta_dict).
         """
         folder = Path(model_folder)
         # Locate metadata JSON
@@ -94,18 +97,21 @@ class ModelUser:
             else:
                 raise FileNotFoundError(f"Cannot identify metadata JSON in {folder}")
         meta = json.loads(meta_path.read_text())
+
         # Locate model file
         model_file = folder / "model.joblib"
         if not model_file.exists() and meta.get("model_name"):
             candidate = folder / f"{meta['model_name']}.joblib"
             if candidate.exists():
                 model_file = candidate
+
         # Locate transformer file
         transformer_file = folder / "transformer.joblib"
         if not transformer_file.exists() and meta.get("transformer_name"):
             candidate = folder / f"{meta['transformer_name']}.joblib"
             if candidate.exists():
                 transformer_file = candidate
+
         # Fallback: assign leftover joblib files
         if not model_file.exists() or not transformer_file.exists():
             all_jobs = list(folder.glob("*.joblib"))
@@ -123,7 +129,6 @@ class ModelUser:
 
 
 def save_mask(mask, output_path):
-    # Optionally save
     from imageio import imwrite
     imwrite(output_path, mask * 255)
     print(f"✅ Mask saved to {output_path}")

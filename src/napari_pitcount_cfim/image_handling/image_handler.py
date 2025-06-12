@@ -173,8 +173,8 @@ class ImageHandler(QWidget):
 
     def _select_folder(self) -> bool:
         """
-        Pop up a folder‐selection dialog and store the result in self.output_path.
-        Returns False if the user cancels.
+            Pop up a folder‐selection dialog and store the result in self.output_path.
+            Returns False if the user cancels.
         """
         folder = QFileDialog.getExistingDirectory(
             self,
@@ -189,9 +189,8 @@ class ImageHandler(QWidget):
 
     def _load_images(self, path: Path="None", verbosity: int=0):
         """
-        Load images from a folder into the napari viewer.
+            Load images from a folder into the napari viewer.
         """
-        # 0) Update the settings:
         self.settings = self.settings_handler.get_updated_settings().get("file_settings")
 
         if not path in ("None", None, False):
@@ -212,7 +211,6 @@ class ImageHandler(QWidget):
                 if not self._select_folder(): ## Dialog canceled
                     return None
 
-            # 2) Make sure we have a path (either from the dialog or pre‐set):
             if not self.settings.get("input_folder"):
                 raise ValueError("input path is not set. Please set the input path before loading images.")
             else:

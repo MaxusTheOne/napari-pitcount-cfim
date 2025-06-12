@@ -13,6 +13,11 @@ from napari_pitcount_cfim.config.settings_structure import CFIMSettings
 base_name = "napari_pitcount_cfim"
 
 class SettingsHandler(QWidget):
+    """
+        A class to handle and manage settings for the plugin.
+
+        Adds a button to open settings file.
+    """
     def __init__(self, path=None, parent=None, debug=False):
         super().__init__(parent=parent)
         self.settings: BaseModel

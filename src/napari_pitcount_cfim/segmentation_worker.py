@@ -31,7 +31,7 @@ class SegmentationWorker(QThread):
             mask = masks_list[0] if isinstance(masks_list, list) else masks_list
             logging.debug(f"Thread {self.objectName()}: segmentation done, emitting result")
             self.result.emit(mask, self.image_name, self.uuid)
-        except Exception:
+        except Exception: ## Catch all to log thread with the exception
             logging.exception(f"Thread {self.objectName()}: exception during segmentation")
         finally:
             logging.debug(f"Thread {self.objectName()}: exiting run()")
