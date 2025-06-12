@@ -192,8 +192,9 @@ class MainWidget(QWidget):
         """
         Add the logo to the widget.
         """
-        path = Path(__file__).parent / "resources" / "logo" / "CFIM_logo_small.png"
+        path = Path(__file__).parent.parent / "resources" / "logo" / "CFIM_logo_small.png"
         logo_label = QLabel()
+        print(f"Dev | Adding logo from {path}")
         logo_label.setText(f"<img src='{path}' width='320'/>")
         self.layout().addWidget(logo_label)
 
