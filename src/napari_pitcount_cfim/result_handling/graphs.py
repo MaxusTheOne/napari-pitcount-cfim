@@ -63,6 +63,7 @@ def modern_graph(graph_label, avg_vals, pct_vals, graph_groups, output_folder):
     plt.tight_layout()
     plt.savefig(graph_path, dpi=300)
     plt.close(fig)
+    return graph_path
 
 
 def simple_graph(graph_label, avg_vals, pct_vals, graph_groups, output_folder):
@@ -80,4 +81,3 @@ def simple_graph(graph_label, avg_vals, pct_vals, graph_groups, output_folder):
     plt.savefig(graph_path)
     plt.close()
     print(f"Graph saved to {graph_path}")
-

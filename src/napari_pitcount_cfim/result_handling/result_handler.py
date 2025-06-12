@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 # removed unused plt import
 from napari.utils.notifications import show_warning, show_info
+from napari import current_viewer
 from qtpy.QtWidgets import QWidget, QFileDialog, QPushButton
 from skimage import measure
 from skimage.measure import regionprops
@@ -171,9 +172,17 @@ class ResultHandler(QWidget):
                 pct_vals = [s['cells_with_pits_percent'] for s in stats]
             # call the selected graph function
             if graph_style == 'modern':
-                modern_graph(graph_label, avg_vals, pct_vals, graph_groups, self.output)
-            else:
-                simple_graph(graph_label, avg_vals, pct_vals, graph_groups, self.output)
+                graph = modern_graph(graph_label, avg_vals, pct_vals, graph_groups, self.output)
+                # add graph to napari viewer
+                try:
+                    viewer = current_viewer()
+                    if viewer:
+                        viewer.open(str(graph))
+                        viewer.reset_view()
+                except Exception as e:
+                    if self.debug:
+                        print(f"Debug | result_handler | Failed to add graph to viewer: {e}")
+
 
         return stats
 
