@@ -62,7 +62,7 @@ def main():
         "--verbosity", "-v", type=int, default=0, help="Set verbosity level (default: 0, max: 2)"
     )
     parser.add_argument(
-        "--input-folder", "-i", type=str, help="Input folder (only with --no-gui)"
+        "--input-folder", "-i", nargs="+", type=str, help="Input folder (only with --no-gui)"
     )
     parser.add_argument(
         "--output-folder", "-o", type=str, help="Output folder for results (default: 'output')",
@@ -88,7 +88,7 @@ def main():
         os.environ["PITCOUNT_CFIM_NO_GUI"] = "1"
 
         # Set environment variables for non-GUI mode
-        os.environ["PITCOUNT_CFIM_INPUT_FOLDER"] = args.input_folder or ""
+        os.environ["PITCOUNT_CFIM_INPUT_FOLDER"] = ";".join(args.input_folder) if args.input_folder else ""
         os.environ["PITCOUNT_CFIM_OUTPUT_FOLDER"] = args.output_folder or ""
         os.environ["PITCOUNT_CFIM_VERBOSITY"] = str(args.verbosity or 0)
         os.environ["PITCOUNT_CFIM_SAVE_RAW_DATA"] = "1" if args.save_raw_data else "0"

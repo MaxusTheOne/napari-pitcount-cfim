@@ -84,7 +84,7 @@ class MainWidget(QWidget):
             self.progress_bar = QProgressBar(self)
             self.progress_bar.setMinimum(0)
 
-            self.ml_button = QPushButton("ML all images")
+            self.ml_button = QPushButton("Run pit segmentation for all images")
             self.ml_button.clicked.connect(self._run_ml_analysis)
 
             pane.layout().addWidget(self.cellpose_button)
@@ -112,15 +112,18 @@ class MainWidget(QWidget):
         settings = self.setting_handler.get_updated_settings()
 
         # Load images
-        input_path = os.getenv("PITCOUNT_CFIM_INPUT_FOLDER", "find_path")
+        input_paths = os.getenv("PITCOUNT_CFIM_INPUT_FOLDER", "find_path")
         output_folder = os.getenv("PITCOUNT_CFIM_OUTPUT_FOLDER", "find_path")
         verbosity = int(os.getenv("PITCOUNT_CFIM_VERBOSITY", "0"))
         save_raw = os.getenv("PITCOUNT_CFIM_SAVE_RAW_DATA", "0") == "1"
         dry_run = os.getenv("PITCOUNT_CFIM_DRY_RUN", "0") == "1"
         family_grouping = os.getenv("PITCOUNT_CFIM_FAMILY_GROUPING", "default")
 
+        if not input_paths in ("find_path", "None", None, ""):
+            input_paths = input_paths.split(";")
 
-        image_layers = self.image_handler.load_images({"input_folder": input_path, "verbosity": verbosity})
+
+        image_layers = self.image_handler.load_images(input_folders = input_paths, verbosity = verbosity)
         for layer in image_layers:
             image_uuid = layer.unique_id
             self.result_handler.start_result_record(image_uuid=image_uuid, image_name=layer.name, folder_group=layer.metadata.get("folder_group", "default"))
@@ -166,9 +169,6 @@ class MainWidget(QWidget):
                 print(f"NO GUI | Completed ML")
         #endregion
 
-        # Results handling
-
-
         self.result_handler.set_raw_setting(save_raw)
 
         self.result_handler.create_and_save_results(output_folder, family_grouping=family_grouping)
@@ -192,7 +192,7 @@ class MainWidget(QWidget):
         """
         Add the logo to the widget.
         """
-        path = Path(__file__).parent / "logo" / "CFIM_logo_small.png"
+        path = Path(__file__).parent / "resources" / "logo" / "CFIM_logo_small.png"
         logo_label = QLabel()
         logo_label.setText(f"<img src='{path}' width='320'/>")
         self.layout().addWidget(logo_label)
@@ -230,7 +230,7 @@ class MainWidget(QWidget):
 
         if total == 0:
             showinfo("No images loaded")
-            return  # No images loaded, nothing to do
+            return
 
         if gui:
             self.progress_bar.setMinimum(0)
@@ -238,18 +238,14 @@ class MainWidget(QWidget):
             self.progress_bar.setValue(0)
             self.progress_bar.setFormat("%p%")
 
-            # Turn off the analysis button
             self.cellpose_button.setEnabled(False)
             self.cellpose_button.setText(f"Analyzing {total} images...")
         else:
-            print(f"Running Cellpose on {total} images... | Dev Verbosity: {verbosity}")
+            print(f"Running Cellpose on {total} images... ")
 
             self._event_loop = QEventLoop()
 
-
-        # Initialize counter for completed images
         self._completed = 0
-
 
         scale = self.image_handler.get_scale(0)
         cellpose_settings = self.setting_handler.get_updated_settings().get("cellpose_settings")
@@ -259,7 +255,7 @@ class MainWidget(QWidget):
         if scale.shape == (3,):
             scale = scale[1:]
 
-        # Define a slot to handle results coming from worker threads
+        ## Callback function for thread workers.
         def _on_segmentation_result(mask, image_layer_name, image_uuid: UUID):
             """Receive segmentation result from a worker and update the viewer/UI."""
             self.result_handler.set_cell_mask(image_uuid, mask)
@@ -289,7 +285,7 @@ class MainWidget(QWidget):
             name = layer.name
             uuid = layer.unique_id
 
-            # If layers are Napari layer objects, get the numpy data and name
+            # napari_pitcount_cfim/_dock_widget:MainWidget._run_cellpose_segmentation #292
             cellpose_user = CellposeUser(cellpose_settings=cellpose_settings)
 
             worker = SegmentationWorker(data, name, uuid, cellpose_user)
@@ -332,11 +328,13 @@ class MainWidget(QWidget):
         self.result_handler.start_result_record_gui(image_layers)
 
         if gui:
-            self.progress_bar.setMinimum(0)
-            self.progress_bar.setMaximum(len(image_layers))
-            self.progress_bar.setValue(0)
+            total = len(image_layers)
 
+            self.progress_bar.setMinimum(0)
+            self.progress_bar.setMaximum(total)
+            self.progress_bar.setValue(0)
             self.ml_button.setEnabled(False)
+            self.cellpose_button.setText(f"Analyzing {total} images...")
 
 
         predictions = []
@@ -359,7 +357,7 @@ class MainWidget(QWidget):
             self.result_handler.set_pit_mask(image_uuid=unique_id, pit_mask=prediction)
         if gui:
             self.ml_button.setEnabled(True)
-        return predictions
+            self.ml_button.setText("Run pit segmentation for all images")
 
 
 

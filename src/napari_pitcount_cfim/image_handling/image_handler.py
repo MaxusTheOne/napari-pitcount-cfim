@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import UUID
 import napari.layers
 import numpy as np
+from pydantic.v1 import validate_arguments
 from qtpy.QtWidgets import QWidget, QPushButton, QFileDialog
 
 # Default values
@@ -125,16 +126,27 @@ class ImageHandler(QWidget):
         self.load_button.clicked.connect(self._load_images)
         return self.load_button
 
-    def load_images(self, load_settings):
+    @validate_arguments
+    def load_images(self, input_folders: list[str] | str = "find_path", verbosity: int = 0):
         """
             Load images from a folder into the napari viewer.
             If path is provided, it will be used as the input path.
         """
-        path = Path(load_settings.get("input_folder", "find_path"))
-        verbosity = load_settings.get("verbosity", 0)
 
+        if isinstance(input_folders, str):
+            path = Path(input_folders)
+            return self._load_images(path=path, verbosity=verbosity)
+        elif isinstance(input_folders, list):
+            images = []
+            for path in input_folders:
+                if not isinstance(path, str):
+                    raise ValueError(f"Expected a string path, but got: {path}. Please provide a valid path.")
+                else:
+                    path = Path(path)
+                    images.extend(self._load_images(path=path, verbosity=verbosity))
+            return images
+        raise ValueError(f"Expected a string or list of strings, but got: {input_folders}. Please provide a valid path or list of paths.")
 
-        return self._load_images(path=path, verbosity=verbosity)
 
 
     def set_output_path(self, path):

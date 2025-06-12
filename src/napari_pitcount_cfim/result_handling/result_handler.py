@@ -1,11 +1,13 @@
 # Python
+import csv
+from datetime import datetime
 import json
 import uuid
 from pathlib import Path
 
 import numpy as np
 # removed unused plt import
-from napari.utils.notifications import show_warning
+from napari.utils.notifications import show_warning, show_info
 from qtpy.QtWidgets import QWidget, QFileDialog, QPushButton
 from skimage import measure
 from skimage.measure import regionprops
@@ -146,9 +148,11 @@ class ResultHandler(QWidget):
                     json.dump(raw_dict, f, indent=2)
 
             # save stats
-            stats_file = Path(self.output) / f"stats_{group}.json"
             stats.append(group_stats)
-            self._save_statistics(stats, output_path=stats_file)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_path = Path(self.output) / f"statistics_{timestamp}.csv"
+        self._save_statistics_csv(stats, output_path=file_path)
+        show_info(f"data saved to {self.output}")
 
         # generate graph if stats exist
         if stats:
@@ -191,6 +195,25 @@ class ResultHandler(QWidget):
         with open(stats_file, "w", encoding="utf-8") as f:
             json.dump(stats, f, indent=2)
         print(f"Statistics saved to {stats_file}")
+
+    import csv
+    from pathlib import Path
+
+    def _save_statistics_csv(self, stats: list[dict], output_path: str | Path):
+        """
+        Save statistics to CSV.
+        - stats: list of dicts with identical keys
+        - output_path: path to .csv file
+        """
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # fieldnames from first record
+        fieldnames = list(stats[0].keys()) if stats else []
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(stats)
 
 
     def save_raw_data_to_output(self, raw_data: dict, image_name: str = "raw_image"):
