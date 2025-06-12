@@ -1,5 +1,5 @@
 # napari-pitcount-cfim
-
+![AnalysisExample.gif](public/AnalysisExample.gif)
 ## License
 BSD 3-Clause
 
