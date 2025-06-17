@@ -58,6 +58,7 @@ class MainWidget(QWidget):
         else:
             self.no_gui = False
             self.verbosity = 0
+            settings = self.setting_handler.get_settings()
 
             layout = QVBoxLayout()
             layout.setSizeConstraint(QLayout.SetFixedSize)
@@ -68,28 +69,33 @@ class MainWidget(QWidget):
             open_settings_group = self.setting_handler.init_ui()
             self.layout().addWidget(open_settings_group)
             pane = QGroupBox(self)
-            pane.setTitle("Input / Output")
+            pane.setTitle("Input")
             pane.setLayout(QVBoxLayout())
             pane.layout().addWidget(self.image_handler.init_load_button_ui())
-            pane.layout().addWidget(self.result_handler.init_output_button_ui())
             self.layout().addWidget(pane)
 
             pane = QGroupBox(self)
             pane.setTitle("Analysis")
             pane.setLayout(QVBoxLayout())
-
-            self.cellpose_button = QPushButton("Cellpose all images")
-            self.cellpose_button.clicked.connect(self._run_cellpose_segmentation)
-
             self.progress_bar = QProgressBar(self)
             self.progress_bar.setMinimum(0)
+            if not settings.get("seperate_analysis", False):
+                self.analysis_button = QPushButton("Analyze cells and pits in all images")
+                self.analysis_button.clicked.connect(self._run_combined_analysis)
 
-            self.ml_button = QPushButton("Run pit segmentation for all images")
-            self.ml_button.clicked.connect(self._run_ml_analysis)
+                pane.layout().addWidget(self.analysis_button)
+            else:
+                self.cellpose_button = QPushButton("Cellpose all images")
+                self.cellpose_button.clicked.connect(self._run_cellpose_segmentation)
 
-            pane.layout().addWidget(self.cellpose_button)
+
+                self.ml_button = QPushButton("Run pit segmentation for all images")
+                self.ml_button.clicked.connect(self._run_ml_analysis)
+
+                pane.layout().addWidget(self.cellpose_button)
+                pane.layout().addWidget(self.ml_button)
+
             pane.layout().addWidget(self.progress_bar)
-            pane.layout().addWidget(self.ml_button)
 
             self.layout().addWidget(pane)
 
@@ -177,9 +183,23 @@ class MainWidget(QWidget):
         print("NO GUI | Pipeline completed successfully.")
         sys.exit(0)
 
+    def _run_combined_analysis(self):
+        """
+            Run both Cellpose segmentation and ML analysis in one go.
+        """
+        if self.verbosity >= 1:
+            print("Running combined analysis...")
+
+        self._run_cellpose_segmentation()
+        self._run_ml_analysis()
+
+        if self.verbosity >= 1:
+            print("Combined analysis completed.")
+
     def _update_widget_settings(self):
         """
-        Update the settings of the widget.
+            Update the settings of the widget.
+            unnecessary rn, as the settings are updated automatically by the SettingsHandler.
         """
         settings = self.setting_handler.get_updated_settings()
 
