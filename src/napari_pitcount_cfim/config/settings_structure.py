@@ -20,7 +20,7 @@ class DebugSettings(BaseModel):
         Settings for debugging.
     """
     debug: bool = Field(default=False)
-    verbosity_level: int = Field(default=1)
+    verbosity_level: int = Field(default=1, ge=0, le=3, description="Verbosity level for plugin logging.")
 
 class AutomationSettings(BaseModel):
     """
@@ -45,12 +45,12 @@ class CellposeSettings(BaseModel):
     """
         Settings for the Cellpose segmentation.
     """
-    diameter: Optional[float] = Field(default=None
+    diameter: Optional[float] = Field(default=None, ge=0, le=1000
                             , description="Diameter of the cells in pixels. If None, Cellpose will estimate it.")
     border_filter: bool = Field(default=True)
     model_type: str = Field(default="cyto3")
     gpu: bool = Field(default=False)
-    sharpen_radius: int = Field(default=0)
+    sharpen_radius: int = Field(default=0, ge=0, le=10, description="Radius for sharpening the image before segmentation. 0 means no sharpening.")
 
     # Attempted virtual fields
     debug: Optional[bool] = Field(default=None, exclude=True)
@@ -63,6 +63,14 @@ class ModelSettings(BaseModel):
     model_folder: str = Field(default="none", description="Path to the folder containing a model.joblib and transformer.joblib file.")
     mask_color: str = Field(default="Blue", description="Color for the mask overlay. Color name or RGBA tuple. (e.g. 'Blue' or (0, 0, 255, 128))")
 
+class UISettings(BaseModel):
+    """
+        Settings for the UI of the plugin.
+    """
+    separate_analysis: bool = Field(default=False, description="If True, the two segmentation steps will have separate buttons.")
+    raw_settings: bool = Field(default=False, description="If True, the settings will be displayed as a JSON file")
+
+
 
 class CFIMSettings(BaseModel):
     """
@@ -73,9 +81,11 @@ class CFIMSettings(BaseModel):
         ## TODO: add graph settings
         ## TODO: add all cellpose settings
     """
-    __version__: str = "1.0.0"
+    __version__: str = "1.0.3"
 
     version: str = Field(default=__version__)
+
+    ui_settings: UISettings = UISettings()
     automation_settings: AutomationSettings = AutomationSettings()
     file_settings: FileSettings = FileSettings()
     cellpose_settings: CellposeSettings = CellposeSettings()

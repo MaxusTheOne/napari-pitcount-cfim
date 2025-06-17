@@ -1,4 +1,4 @@
-
+# TODO: Add validation
 class RangeDict:
     def __init__(self, range_map: list[tuple]):
         self.range_map = range_map

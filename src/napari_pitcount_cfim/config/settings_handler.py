@@ -8,6 +8,7 @@ from qtpy.QtWidgets import QGroupBox, QWidget, QVBoxLayout, QPushButton
 
 from napari.settings import get_settings
 
+from napari_pitcount_cfim.config.settings_dialog import  SettingsDialog
 from napari_pitcount_cfim.config.settings_structure import CFIMSettings
 
 base_name = "napari_pitcount_cfim"
@@ -20,8 +21,9 @@ class SettingsHandler(QWidget):
     """
     def __init__(self, path=None, parent=None, debug=False):
         super().__init__(parent=parent)
-        self.settings: BaseModel
+        self.settings: BaseModel | CFIMSettings
         self.debug = debug
+        self._parent = parent
         if path:
             self.settings_folder_path = os.path.expanduser(path)
         else:
@@ -55,13 +57,17 @@ class SettingsHandler(QWidget):
         return pane
 
     def _open_settings_file(self):
-        file_path = self.settings_file_path
-        if sys.platform == "win32":
-            os.startfile(file_path)
-        elif sys.platform == "darwin":
-            subprocess.call(["open", file_path])
-        else:  # assume Linux or similar
-            subprocess.call(["xdg-open", file_path])
+        settings = self._get_settings()
+        if settings["ui_settings"]["raw_settings"]:
+            file_path = self.settings_file_path
+            if sys.platform == "win32":
+                os.startfile(file_path)
+            elif sys.platform == "darwin":
+                subprocess.call(["open", file_path])
+            else:  # assume Linux or similar
+                subprocess.call(["xdg-open", file_path])
+        else:
+            self._show_settings_dialog()
 
     def refresh_settings(self):
         """
@@ -83,6 +89,13 @@ class SettingsHandler(QWidget):
 
         return self.settings.as_dict_with_virtuals()
 
+    def _get_settings(self):
+        """
+            Returns the settings
+        """
+
+        return self.settings.as_dict_with_virtuals()
+
     def update_settings(self, path: str, value):
         parts = path.split(".")
         obj = self.settings
@@ -90,6 +103,12 @@ class SettingsHandler(QWidget):
             obj = getattr(obj, part)
         setattr(obj, parts[-1], value)
         self._save_settings()
+
+    def _show_settings_dialog(self):
+        print(f"Dev | settings class: {self.settings.__class__.__name__}")
+        dialog = SettingsDialog(initial_settings=self.settings, parent=self)
+        dialog.exec()
+
 
     def _load_settings(self):
         if os.path.exists(self.settings_file_path):

@@ -79,7 +79,7 @@ class MainWidget(QWidget):
             pane.setLayout(QVBoxLayout())
             self.progress_bar = QProgressBar(self)
             self.progress_bar.setMinimum(0)
-            if not settings.get("seperate_analysis", False):
+            if not settings["ui_settings"]["separate_analysis"]:
                 self.analysis_button = QPushButton("Analyze cells and pits in all images")
                 self.analysis_button.clicked.connect(self._run_combined_analysis)
 
