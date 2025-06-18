@@ -27,6 +27,7 @@ class ResultHandler(QWidget):
         super().__init__(parent)
         self.settings_handler = settings_handler
         self.settings_parent = settings_handler.get_settings()
+
         self.settings = self.settings_parent["file_settings"]
         self.output = self.settings["output_folder"]
         self.prompt_for_folder = self.settings["folder_prompt"]

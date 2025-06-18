@@ -1,6 +1,6 @@
 from enum import Enum
 
-from PyQt6.QtWidgets import QGroupBox
+from PyQt6.QtWidgets import QGroupBox, QLayout
 from annotated_types import Ge, Gt, Le, Lt
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -45,10 +45,16 @@ class SettingsDialog(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.tabs)
         main_layout.addWidget(buttons)
+        self.setLayout(main_layout)
 
         # Populate the tabs with settings fields
-        self._add_sections_as_groupboxes(type(self.initial_settings), self.basic_layout)
-        self.setLayout(main_layout)
+        container = QWidget()
+        main_layout = QVBoxLayout(container)
+
+        # populate everything into main_layout
+        build_ui_from_model(self.initial_settings, main_layout)
+
+        self.basic_layout.addWidget(container)
 
 
 
@@ -66,93 +72,82 @@ class SettingsDialog(QDialog):
         self._save_settings()
         self.accept()
 
-    def _add_sections_as_groupboxes(self, settings_class: type[BaseModel], layout: QVBoxLayout):
-        """
-            Add sections of settings as group boxes.
-        """
-        for section_name, field in settings_class.model_fields.items():
-            print(f"Adding section: {section_name}, Fields: {field}")
+def build_ui_from_model(model: BaseModel, layout: QLayout):
+    for name, field in type(model).model_fields.items():
+        if name == "version":
+            continue
 
-            if section_name in ["version"]:
-                continue
-            field_type = field.annotation
+        value = getattr(model, name)
+        field_type = field.annotation
 
-            if isinstance(field_type, type) and issubclass(field_type, BaseModel):
-                group_box = QGroupBox(section_name)
-                group_box.setLayout(QVBoxLayout())
-                layout.addWidget(group_box)
-                self._add_sections_as_groupboxes(field_type, group_box.layout())
-            else:
-                print(f"Dev | Adding field: {section_name} of type {field_type} to layout {layout}")
-                # Create a field for the setting
-                field_info = settings_class.model_fields[section_name]
-                widget = create_input_widget_for_field(field_info)
-                widget.setObjectName(section_name)
-                # Create label with title or fallback to section_name and add widget next to it
-                title = field_info.title or section_name
-                label = QLabel(title)
-                row = QHBoxLayout()
-                row.addWidget(label)
-                row.addWidget(widget)
-                layout.addLayout(row)
+        # if it's a nested BaseModel, make a QGroupBox
+        if isinstance(field_type, type) and issubclass(field_type, BaseModel):
+            groupbox = QGroupBox(name)
+            groupbox_layout = QVBoxLayout()
+            groupbox.setLayout(groupbox_layout)
+            # recurse into the nested instance
+            build_ui_from_model(value, groupbox_layout)
+            layout.addWidget(groupbox)
 
+        else:
+            # simple field → label + input
+            label = QLabel(field.title or name)
+            widget = create_input_widget_for_field(field, value)
+            widget.setObjectName(name)
 
-
-    def _add_subsettings_as_fields(self, settings, layout: QVBoxLayout):
-        """
-            Recursively add subsettings as fields in the layout.
-        """
-        print(f"Dry | Adding subsettings for: {settings}")
+            row = QHBoxLayout()
+            row.addWidget(label)
+            row.addStretch(1) ## Should align the label to the left
+            row.addWidget(widget)
+            layout.addLayout(row)
 
 
 
-def create_input_widget_for_field(field_info):
-    default = field_info.get_default()  # default value if any
-    desc = field_info.description or ""  # description for tooltip
-    field_type = field_info.annotation  # type of the field
+def create_input_widget_for_field(field_info: FieldInfo, value=None):
 
 
-    if field_type == bool:
-        widget = QCheckBox()
-        if default:
-            widget.setChecked(default)
-    elif field_type == int:
-        widget = QSpinBox()
-        min_val, max_val = extract_bounds(field_info)
-        widget.setRange(min_val, max_val)  # Example range, Change to metadata
-        if default is not None:
-            widget.setValue(default)
-    elif field_type == float:
-        widget = QDoubleSpinBox()
-        if default is not None:
-            widget.setValue(default)
-    elif isinstance(field_info.annotation, type) and issubclass(field_info.annotation, Enum):
-        # Enum field
-        widget = QComboBox()
-        choices = [e.name for e in field_info.annotation]  # or e.value
-        widget.addItems(choices)
-        if default:
-            widget.setCurrentText(default.name if hasattr(default, "name") else str(default))
+    def extract_bounds():
+        min_val, max_val = None, None
+        for meta in field_info.metadata:
+            if isinstance(meta, Ge): min_val = meta.ge
+            elif isinstance(meta, Gt): min_val = meta.gt + 1
+            elif isinstance(meta, Le): max_val = meta.le
+            elif isinstance(meta, Lt): max_val = meta.lt - 1
+        return min_val, max_val
+
+    typ = field_info.annotation
+    desc = field_info.description or ""
+
+    if typ is bool:
+        w = QCheckBox()
+        w.setChecked(bool(value))
+
+    elif typ is int:
+        w = QSpinBox()
+        min_val, max_val = extract_bounds()
+        w.setMinimum(min_val if min_val is not None else -2**31)
+        w.setMaximum(max_val if max_val is not None else 2**31 - 1)
+        w.setValue(value if value is not None else 0)
+
+    elif typ is float:
+        w = QDoubleSpinBox()
+        min_val, max_val = extract_bounds()
+        w.setMinimum(min_val if min_val is not None else -1e6)
+        w.setMaximum(max_val if max_val is not None else 1e6)
+        w.setValue(value if value is not None else 0.0)
+
+    elif isinstance(typ, type) and issubclass(typ, Enum):
+        w = QComboBox()
+        options = [e.name for e in typ]
+        w.addItems(options)
+        if value is not None:
+            w.setCurrentText(value.name if hasattr(value, "name") else str(value))
+
     else:
-        # Fallback to QLineEdit for str or other types
-        widget = QLineEdit()
-        if default is not None:
-            widget.setText(str(default))
+        w = QLineEdit()
+        if value is not None:
+            w.setText(str(value))
+
     if desc:
-        widget.setToolTip(desc)
-    return widget
-
-def extract_bounds(field_info: FieldInfo):
-    min_val = None
-    max_val = None
-
-    for meta in field_info.metadata:
-        if isinstance(meta, Ge):
-            min_val = meta.ge
-        elif isinstance(meta, Gt):
-            min_val = meta.gt + 1
-        elif isinstance(meta, Le):
-            max_val = meta.le
-        elif isinstance(meta, Lt):
-            max_val = meta.lt - 1
-    return min_val, max_val
+        w.setToolTip(desc)
+    return w

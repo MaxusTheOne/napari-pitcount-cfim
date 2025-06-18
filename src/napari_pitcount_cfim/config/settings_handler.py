@@ -89,12 +89,14 @@ class SettingsHandler(QWidget):
 
         return self.settings.as_dict_with_virtuals()
 
-    def _get_settings(self):
+    def _get_settings(self, virtuals: bool = True) -> dict:
         """
             Returns the settings
         """
-
-        return self.settings.as_dict_with_virtuals()
+        if virtuals:
+            return self.settings.as_dict_with_virtuals()
+        else:
+            return self.settings.model_dump()
 
     def update_settings(self, path: str, value):
         parts = path.split(".")
@@ -105,7 +107,6 @@ class SettingsHandler(QWidget):
         self._save_settings()
 
     def _show_settings_dialog(self):
-        print(f"Dev | settings class: {self.settings.__class__.__name__}")
         dialog = SettingsDialog(initial_settings=self.settings, parent=self)
         dialog.exec()
 

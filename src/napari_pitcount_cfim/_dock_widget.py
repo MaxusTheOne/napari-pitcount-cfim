@@ -36,11 +36,11 @@ class MainWidget(QWidget):
             qInstallMessageHandler(qt_message_logger)
             setup_thread_exception_hook()
 
-
+        # _dock_widget:MainWidget.__init__ #39
         self.viewer = napari_viewer
-        self.setting_handler = SettingsHandler(parent=self) #1
+        self.setting_handler: SettingsHandler = SettingsHandler(parent=self) #1
         self.image_handler: ImageHandler = ImageHandler(parent=self, napari_viewer=self.viewer, settings_handler=self.setting_handler)
-        self.result_handler = ResultHandler(parent=self, settings_handler=self.setting_handler)
+        self.result_handler: ResultHandler = ResultHandler(parent=self, settings_handler=self.setting_handler)
         self._workers = []
         self.model_user: ModelUser | None = None
 
@@ -86,11 +86,11 @@ class MainWidget(QWidget):
                 pane.layout().addWidget(self.analysis_button)
             else:
                 self.cellpose_button = QPushButton("Cellpose all images")
-                self.cellpose_button.clicked.connect(self._run_cellpose_segmentation)
+                self.cellpose_button.clicked.connect(lambda : self._run_cellpose_segmentation(qbutton=self.cellpose_button))
 
 
                 self.ml_button = QPushButton("Run pit segmentation for all images")
-                self.ml_button.clicked.connect(self._run_ml_analysis)
+                self.ml_button.clicked.connect(lambda : self._run_ml_analysis(qbutton=self.ml_button))
 
                 pane.layout().addWidget(self.cellpose_button)
                 pane.layout().addWidget(self.ml_button)
@@ -187,6 +187,7 @@ class MainWidget(QWidget):
         """
             Run both Cellpose segmentation and ML analysis in one go.
         """
+        # TODO: Progress class
         if self.verbosity >= 1:
             print("Running combined analysis...")
 
@@ -236,7 +237,7 @@ class MainWidget(QWidget):
 
 
 
-    def _run_cellpose_segmentation(self, image_layers = None):
+    def _run_cellpose_segmentation(self, image_layers = None, qbutton: QPushButton=None):
         """Run Cellpose segmentation on all images using background threads."""
         if image_layers in (None, False):
             layers = self.image_handler.get_all_images_props(["data", "name", "uuid"])
@@ -259,8 +260,11 @@ class MainWidget(QWidget):
             self.progress_bar.setValue(0)
             self.progress_bar.setFormat("%p%")
 
-            self.cellpose_button.setEnabled(False)
-            self.cellpose_button.setText(f"Analyzing {total} images...")
+            if qbutton:
+                button_text = qbutton.text()
+
+                qbutton.setEnabled(False)
+                qbutton.setText(f"Analyzing {total} images...")
         else:
             print(f"Running Cellpose on {total} images... ")
 
@@ -278,7 +282,10 @@ class MainWidget(QWidget):
 
         ## Callback function for thread workers.
         def _on_segmentation_result(mask, image_layer_name, image_uuid: UUID):
-            """Receive segmentation result from a worker and update the viewer/UI."""
+            """
+                Callback function to handle the result of the segmentation worker.
+            """
+
             self.result_handler.set_cell_mask(image_uuid, mask)
             self.image_handler.add_label(mask, name=f"{image_layer_name}_mask", scale=scale, metadata={"cfim_type": "segmentation"})
 
@@ -288,8 +295,10 @@ class MainWidget(QWidget):
                 self.progress_bar.setValue(self._completed)
                 if self._completed == total:
                     self.progress_bar.setValue(total)
-                    self.cellpose_button.setEnabled(True)
-                    self.cellpose_button.setText("Cellpose all images")
+
+                    if qbutton:
+                        qbutton.setEnabled(True)
+                        qbutton.setText(button_text)
             else:
                 if verbosity >= 1:
                     print(f"Completed {self._completed}/{total} images.")
@@ -306,7 +315,7 @@ class MainWidget(QWidget):
             name = layer.name
             uuid = layer.unique_id
 
-            # napari_pitcount_cfim/_dock_widget:MainWidget._run_cellpose_segmentation #292
+            # napari_pitcount_cfim/_dock_widget:MainWidget._run_cellpose_segmentation #318
             cellpose_user = CellposeUser(cellpose_settings=cellpose_settings)
 
             worker = SegmentationWorker(data, name, uuid, cellpose_user)
@@ -319,7 +328,7 @@ class MainWidget(QWidget):
             self._event_loop.exec_()
 
 
-    def _run_ml_analysis(self, model_folder: str = None):
+    def _run_ml_analysis(self, model_folder: str = None, qbutton: QPushButton = None):
 
         settings = self.setting_handler.get_updated_settings().get("model_settings")
         gui = not self.no_gui
@@ -354,8 +363,12 @@ class MainWidget(QWidget):
             self.progress_bar.setMinimum(0)
             self.progress_bar.setMaximum(total)
             self.progress_bar.setValue(0)
-            self.ml_button.setEnabled(False)
-            self.cellpose_button.setText(f"Analyzing {total} images...")
+
+            if qbutton:
+                button_text = qbutton.text()
+
+                qbutton.setEnabled(False)
+                qbutton.setText(f"Analyzing {total} images...")
 
 
         predictions = []
@@ -377,8 +390,10 @@ class MainWidget(QWidget):
                     print(f"Completed {completed}/{len(image_layers)} images.")
             self.result_handler.set_pit_mask(image_uuid=unique_id, pit_mask=prediction)
         if gui:
-            self.ml_button.setEnabled(True)
-            self.ml_button.setText("Run pit segmentation for all images")
+            if qbutton:
+                qbutton.setEnabled(True)
+                qbutton.setText(button_text)
+
 
 
 

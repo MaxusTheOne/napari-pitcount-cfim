@@ -70,8 +70,6 @@ class UISettings(BaseModel):
     separate_analysis: bool = Field(default=False, description="If True, the two segmentation steps will have separate buttons.")
     raw_settings: bool = Field(default=False, description="If True, the settings will be displayed as a JSON file")
 
-
-
 class CFIMSettings(BaseModel):
     """
         Settings for the napari pitcount CFIM plugin.
